@@ -14,6 +14,24 @@ function Fig = plot_multiscale_motif_diagnostics(Cluster, varargin)
 %
 % Output
 %   Fig : struct of figure handles
+%
+% Notes
+%   This patched version fixes feature recovery for Figure 3 / Figure 4 by
+%   using a robust fallback chain for feature-to-channel mapping:
+%       1) scaleObj.channelMeta.BaseFeature
+%       2) scaleObj.featureNames
+%       3) ChunkSet.channelMeta.BaseFeature
+%       4) ChunkSet.featureNames
+%
+%   It also supports session/anchor metadata names used in the current repo:
+%       anchor_frame, anchor_time_s, session_index
+%
+%   Usage:
+%       Fig = plot_multiscale_motif_diagnostics(Cluster, ...
+%           'ChunkSet', ChunkSet, ...
+%           'ExampleSession', 1, ...
+%           'RawFeatureNames', {'centroid_dist','mutual_facing', ...
+%                               'radial_speed_12','tangential_speed_12','in_contact'});
 
 p = inputParser;
 p.addParameter('ChunkSet', [], @(x)isstruct(x) || isempty(x));
@@ -31,7 +49,8 @@ assert(isstruct(Cluster), 'Cluster must be a struct.');
 assert(isfield(Cluster, 'labels'), 'Cluster.labels is required.');
 assert(isfield(Cluster, 'NumClusters'), 'Cluster.NumClusters is required.');
 assert(isfield(Cluster, 'Data'), 'Cluster.Data is required.');
-assert(isfield(Cluster.Data, 'anchorTable'), 'Cluster.Data.anchorTable is required.');
+assert(isfield(Cluster.Data, 'anchorTable') && istable(Cluster.Data.anchorTable), ...
+    'Cluster.Data.anchorTable is required.');
 
 labels = Cluster.labels(:);
 K = Cluster.NumClusters;
@@ -41,26 +60,18 @@ nAnchors = numel(labels);
 assert(height(A) == nAnchors, ...
     'anchorTable height must match number of retained anchors.');
 
-if ismember('session_index', A.Properties.VariableNames)
-    sessionIdx = A.session_index(:);
-elseif ismember('sessionIdx', A.Properties.VariableNames)
-    sessionIdx = A.sessionIdx(:);
-else
-    error('anchorTable must contain session_index or sessionIdx.');
-end
+sessionVar = local_pick_var(A.Properties.VariableNames, {'session_index','sessionIdx','session_id'});
+anchorFrameVar = local_pick_var(A.Properties.VariableNames, {'anchor_frame','anchorFrame'});
+anchorTimeVar = local_pick_var(A.Properties.VariableNames, {'anchor_time_s','anchorTimeSec','timeSec'});
 
-if ismember('anchor_frame', A.Properties.VariableNames)
-    anchorFrame = A.anchor_frame(:);
-elseif ismember('anchorFrame', A.Properties.VariableNames)
-    anchorFrame = A.anchorFrame(:);
-else
-    error('anchorTable must contain anchor_frame or anchorFrame.');
-end
+assert(~isempty(sessionVar), 'anchorTable must contain session_index/sessionIdx/session_id.');
+assert(~isempty(anchorFrameVar), 'anchorTable must contain anchor_frame/anchorFrame.');
 
-if ismember('anchor_time_s', A.Properties.VariableNames)
-    anchorTime = A.anchor_time_s(:);
-elseif ismember('anchorTimeSec', A.Properties.VariableNames)
-    anchorTime = A.anchorTimeSec(:);
+sessionIdx = A.(sessionVar)(:);
+anchorFrame = A.(anchorFrameVar)(:);
+
+if ~isempty(anchorTimeVar)
+    anchorTime = A.(anchorTimeVar)(:);
 else
     anchorTime = anchorFrame(:);
 end
@@ -119,7 +130,8 @@ if isfield(Cluster, 'Xpca') && size(Cluster.Xpca,2) >= 2
     end
     xlabel('PC1'); ylabel('PC2');
     title('Integrated motif embedding');
-    box off; grid on
+    box off
+    grid on
 else
     axis off
 end
@@ -166,7 +178,7 @@ idxSess = idxSess(order);
 
 labsSess = labels(idxSess);
 timeSess = anchorTime(idxSess);
-frameSess = anchorFrame(idxSess);
+frameSess = anchorFrame(idxSess); %#ok<NASGU>
 
 labsSmooth = local_smooth_labels(labsSess, P.EthogramSmoothFrames);
 
@@ -229,7 +241,6 @@ else
     set(gca,'YTick',[]);
     box off
 
-    % Use reference scale if available
     refScaleIdx = local_choose_reference_scale(P.ChunkSet, Cluster);
     scaleObj = P.ChunkSet.scale(refScaleIdx);
 
@@ -239,7 +250,7 @@ else
         featName = rawFeatureNames(f);
 
         ok = false;
-        [tTrace, xTrace] = local_extract_session_feature_trace(scaleObj, sess, featName);
+        [tTrace, xTrace] = local_extract_session_feature_trace(scaleObj, P.ChunkSet, sess, featName);
         if ~isempty(tTrace) && ~isempty(xTrace)
             ok = true;
             local_add_ethogram_background(gca, timeSess, labsSmooth, ethColors);
@@ -299,7 +310,7 @@ else
 
             for s = 1:numel(scaleIdxAll)
                 sc = P.ChunkSet.scale(scaleIdxAll(s));
-                [tt, xx] = local_extract_anchor_feature_trace(sc, sessK, frameK, featName);
+                [tt, xx] = local_extract_anchor_feature_trace(sc, P.ChunkSet, sessK, frameK, featName);
                 if ~isempty(tt) && ~isempty(xx)
                     plot(tt - tt(round(end/2)), xx, 'LineWidth', 1.0);
                     plotted = true;
@@ -425,7 +436,7 @@ end
 idx = idx(isfinite(idx) & idx >= 1 & idx <= numel(ChunkSet.scale));
 end
 
-function [t, x] = local_extract_session_feature_trace(scaleObj, sess, featName)
+function [t, x] = local_extract_session_feature_trace(scaleObj, parentChunkSet, sess, featName)
 t = [];
 x = [];
 
@@ -434,20 +445,14 @@ if ~isfield(scaleObj, 'meta') || ~isfield(scaleObj, 'Xraw')
 end
 M = scaleObj.meta;
 
-sessCol = local_pick_var(M.Properties.VariableNames, {'session_index','sessionIdx'});
-timeCol = local_pick_var(M.Properties.VariableNames, {'anchor_time_s','timeSec'});
-featCol = [];
+sessCol = local_pick_var(M.Properties.VariableNames, {'session_index','sessionIdx','session_id'});
+timeCol = local_pick_var(M.Properties.VariableNames, {'anchor_time_s','timeSec','anchorTimeSec'});
 
 if isempty(sessCol) || isempty(timeCol)
     return
 end
 
-if isfield(scaleObj, 'featureNames')
-    featCol = find(strcmp(string(scaleObj.featureNames), string(featName)), 1);
-elseif isfield(scaleObj, 'channelMeta') && ismember('BaseFeature', scaleObj.channelMeta.Properties.VariableNames)
-    featCol = find(strcmp(string(scaleObj.channelMeta.BaseFeature), string(featName)), 1);
-end
-
+featCol = local_find_feature_column(scaleObj, parentChunkSet, featName);
 if isempty(featCol)
     return
 end
@@ -461,18 +466,17 @@ end
 idx = idx(ord);
 
 Xr = scaleObj.Xraw;
-if ndims(Xr) ~= 3
+if ndims(Xr) ~= 3 || featCol > size(Xr,3)
     return
 end
 
-% use center frame of chunk
 mid = round(size(Xr,2) / 2);
 x = squeeze(Xr(idx, mid, featCol));
 t = tt(:);
 x = x(:);
 end
 
-function [t, x] = local_extract_anchor_feature_trace(scaleObj, sess, frameAnchor, featName)
+function [t, x] = local_extract_anchor_feature_trace(scaleObj, parentChunkSet, sess, frameAnchor, featName)
 t = [];
 x = [];
 
@@ -481,21 +485,14 @@ if ~isfield(scaleObj, 'meta') || ~isfield(scaleObj, 'Xraw')
 end
 
 M = scaleObj.meta;
-sessCol = local_pick_var(M.Properties.VariableNames, {'session_index','sessionIdx'});
+sessCol = local_pick_var(M.Properties.VariableNames, {'session_index','sessionIdx','session_id'});
 frameCol = local_pick_var(M.Properties.VariableNames, {'anchor_frame','anchorFrame'});
 
 if isempty(sessCol) || isempty(frameCol)
     return
 end
 
-if isfield(scaleObj, 'featureNames')
-    featCol = find(strcmp(string(scaleObj.featureNames), string(featName)), 1);
-elseif isfield(scaleObj, 'channelMeta') && ismember('BaseFeature', scaleObj.channelMeta.Properties.VariableNames)
-    featCol = find(strcmp(string(scaleObj.channelMeta.BaseFeature), string(featName)), 1);
-else
-    featCol = [];
-end
-
+featCol = local_find_feature_column(scaleObj, parentChunkSet, featName);
 if isempty(featCol)
     return
 end
@@ -509,21 +506,67 @@ end
 row = idxSess(ix);
 
 Xr = scaleObj.Xraw;
-if ndims(Xr) ~= 3
+if ndims(Xr) ~= 3 || featCol > size(Xr,3)
     return
 end
 
 x = squeeze(Xr(row,:,featCol));
 x = x(:);
 
-fps = 1;
+fps = [];
 if isfield(scaleObj, 'fps') && ~isempty(scaleObj.fps)
     fps = scaleObj.fps;
-elseif isfield(M, 'fps')
+end
+if isempty(fps) && ismember('fps', M.Properties.VariableNames)
     fps = M.fps(row);
+end
+if isempty(fps) || ~isfinite(fps) || fps <= 0
+    dt = [];
+    if ismember('start_time_s', M.Properties.VariableNames) && ismember('stop_time_s', M.Properties.VariableNames)
+        dur = M.stop_time_s(row) - M.start_time_s(row);
+        if isfinite(dur) && dur > 0
+            dt = dur / max(numel(x)-1, 1);
+        end
+    end
+    if isempty(dt) || ~isfinite(dt) || dt <= 0
+        fps = 1;
+    else
+        fps = 1 / dt;
+    end
 end
 
 t = ((1:numel(x))' - ceil(numel(x)/2)) ./ fps;
+end
+
+function featCol = local_find_feature_column(scaleObj, parentChunkSet, featName)
+featCol = [];
+
+% 1) Per-scale channel metadata
+if isfield(scaleObj, 'channelMeta') && istable(scaleObj.channelMeta) && ...
+        ismember('BaseFeature', scaleObj.channelMeta.Properties.VariableNames)
+    featCol = find(strcmp(string(scaleObj.channelMeta.BaseFeature), string(featName)), 1);
+    if ~isempty(featCol), return, end
+end
+
+% 2) Per-scale feature names
+if isfield(scaleObj, 'featureNames') && ~isempty(scaleObj.featureNames)
+    featCol = find(strcmp(string(scaleObj.featureNames), string(featName)), 1);
+    if ~isempty(featCol), return, end
+end
+
+% 3) Top-level ChunkSet channel metadata
+if ~isempty(parentChunkSet) && isfield(parentChunkSet, 'channelMeta') && ...
+        istable(parentChunkSet.channelMeta) && ...
+        ismember('BaseFeature', parentChunkSet.channelMeta.Properties.VariableNames)
+    featCol = find(strcmp(string(parentChunkSet.channelMeta.BaseFeature), string(featName)), 1);
+    if ~isempty(featCol), return, end
+end
+
+% 4) Top-level feature names
+if ~isempty(parentChunkSet) && isfield(parentChunkSet, 'featureNames') && ~isempty(parentChunkSet.featureNames)
+    featCol = find(strcmp(string(parentChunkSet.featureNames), string(featName)), 1);
+    if ~isempty(featCol), return, end
+end
 end
 
 function vn = local_pick_var(allVars, candidates)
