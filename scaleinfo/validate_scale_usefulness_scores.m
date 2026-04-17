@@ -1,4 +1,4 @@
-function Report = validate_scale_usefulness_scores(ScaleScore, varargin)
+function Report = validate_scale_usefulness_scores(ScaleScore, ChunkSet, varargin)
 %VALIDATE_SCALE_USEFULNESS_SCORES Validate scale-usefulness scoring outputs.
 %
 % Example
