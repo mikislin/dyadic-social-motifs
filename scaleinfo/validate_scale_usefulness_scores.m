@@ -52,6 +52,7 @@ if P.verbose
 end
 
 if P.makePlots
-    plot_scale_usefulness_diagnostics(ScaleScore);
+    %plot_scale_usefulness_diagnostics(ScaleScore);
+    plot_scale_usefulness_diagnostics(ScaleScore, ChunkSet)
 end
 end
