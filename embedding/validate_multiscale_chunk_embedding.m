@@ -68,7 +68,7 @@ if P.verbose
 end
 
 if P.makePlots
-    plot_multiscale_chunk_embedding_diagnostics(EmbedModel, Report);
+    plot_multiscale_chunk_embedding_diagnostics(EmbedModel);
 end
 end
 
