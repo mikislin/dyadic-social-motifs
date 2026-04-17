@@ -62,7 +62,11 @@ for s = 1:numel(scaleSec)
     if isempty(ex); continue; end
     cum5(s) = sum(ex(1:min(5,numel(ex))));
 end
-bar(categorical(cellstr(compose('%.1fs', scaleSec))), cum5);
+x = 1:numel(scaleSec);
+bar(x, cum5);
+xticks(x);
+xticklabels(compose('%.3gs', scaleSec));
+xtickangle(45);
 ylabel('Cumulative explained (%)');
 title('Cumulative variance in first 5 PCs');
 box off
@@ -75,7 +79,11 @@ for s = 1:numel(scaleSec)
     if isempty(ex); continue; end
     pc1(s) = ex(1);
 end
-bar(categorical(cellstr(compose('%.1fs', scaleSec))), pc1);
+x = 1:numel(scaleSec);
+bar(x, pc1);
+xticks(x);
+xticklabels(compose('%.3gs', scaleSec));
+xtickangle(45);
 ylabel('PC1 explained (%)');
 title('PC1 concentration by scale');
 box off
