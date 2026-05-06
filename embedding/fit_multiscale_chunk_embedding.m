@@ -86,6 +86,8 @@ ScaleModel = repmat(struct( ...
     'nInputDims', [], ...
     'nPCs', [], ...
     'nRetainedForGlobal', [], ...
+    'globalCumExplained', [], ...
+    'globalVarianceReached', [], ...
     'coeff', [], ...
     'mu', [], ...
     'scale', [], ...
@@ -158,6 +160,8 @@ for s = 1:nScale
 
     ScaleModel(s).nPCs = maxPC;
     ScaleModel(s).nRetainedForGlobal = nKeepGlobal;
+    ScaleModel(s).globalCumExplained = sum(explained(1:nKeepGlobal));
+    ScaleModel(s).globalVarianceReached = ScaleModel(s).globalCumExplained >= P.globalVarianceToKeep;
     ScaleModel(s).coeff = coeff;
     ScaleModel(s).mu = prepStats.mu;
     ScaleModel(s).scale = prepStats.scale;
@@ -190,11 +194,21 @@ for s = 1:nScale
 
     if P.verbose
         fprintf('  retained for global PCA: %d PCs (cum explained = %.2f%%)\n', ...
-            nKeepGlobal, sum(explained(1:nKeepGlobal)));
+            nKeepGlobal, ScaleModel(s).globalCumExplained);
+    end
+    if ~ScaleModel(s).globalVarianceReached && nKeepGlobal >= maxPC
+        warning('fit_multiscale_chunk_embedding:GlobalVarianceCap', ...
+            ['Scale %.4gs retained all %d fitted PCs but reached only %.2f%%%%. ' ...
+             'Increase nPCsPerScale to reach %.2f%%%%.'], ...
+            Sc.chunkSec, maxPC, ScaleModel(s).globalCumExplained, P.globalVarianceToKeep);
     end
 end
 
-chunkTable = join_scale_embeddings(ChunkSet.chunkTable, allTables, [allNames; allGlobalNames]);
+joinedNameGroups = cell(nScale,1);
+for s = 1:nScale
+    joinedNameGroups{s} = [string(allNames{s}(:)); string(allGlobalNames{s}(:))];
+end
+chunkTable = join_scale_embeddings(ChunkSet.chunkTable, allTables, joinedNameGroups);
 [embedding, embeddingNames, globalModel, globalStruct] = build_global_embedding(chunkTable, allGlobalNames, P.globalNPCs);
 
 EmbedModel = struct();
@@ -377,6 +391,22 @@ if isempty(scoreNames)
     return
 end
 
+present = ismember(scoreNames, string(chunkTable.Properties.VariableNames));
+if any(~present)
+    missingNames = scoreNames(~present);
+    warning('fit_multiscale_chunk_embedding:MissingGlobalScores', ...
+        'Dropping %d missing global score columns before second-stage PCA. First missing column: %s', ...
+        numel(missingNames), missingNames(1));
+    scoreNames = scoreNames(present);
+end
+if isempty(scoreNames)
+    embedding = zeros(height(chunkTable),0);
+    embeddingNames = strings(0,1);
+    globalModel = struct('coeff', [], 'explained', [], 'mu', [], 'score', [], 'scoreNames', scoreNames);
+    globalStruct = struct('score', [], 'explained', [], 'meta', chunkTable);
+    return
+end
+
 X = chunkTable{:, cellstr(scoreNames)};
 for j = 1:size(X,2)
     x = X(:,j);
@@ -407,6 +437,8 @@ globalModel.explained = explained(:);
 globalModel.mu = mu;
 globalModel.score = score;
 globalModel.scoreNames = scoreNames;
+globalModel.inputNames = scoreNames;
+globalModel.embeddingNames = embeddingNames;
 
 globalStruct = struct();
 globalStruct.score = score;

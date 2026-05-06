@@ -254,6 +254,17 @@ elseif isfield(M, 'globalExplained')
     if isfield(M, 'globalMeta');  globalMeta = M.globalMeta; end
 end
 
+% Backward-compatible fallbacks for current EmbedModel convention.
+if isempty(globalScore) && isfield(M, 'embedding')
+    globalScore = M.embedding;
+end
+if isempty(globalExplained) && isfield(M, 'globalModel') && isstruct(M.globalModel) && isfield(M.globalModel, 'explained')
+    globalExplained = M.globalModel.explained(:)';
+end
+if isempty(globalMeta) && isfield(M, 'chunkTable') && istable(M.chunkTable)
+    globalMeta = M.chunkTable;
+end
+
 % If no globalMeta, try to assemble from per-scale meta
 if isempty(globalMeta) && isfield(M, 'scale') && ~isempty(M.scale)
     rows = table();
@@ -275,6 +286,13 @@ if isempty(globalMeta) && isfield(M, 'scale') && ~isempty(M.scale)
         end
     end
     globalMeta = rows;
+end
+
+% Keep score/meta rows aligned. This protects against stale or partial models.
+if ~isempty(globalScore) && ~isempty(globalMeta) && istable(globalMeta) && height(globalMeta) ~= size(globalScore,1)
+    n = min(height(globalMeta), size(globalScore,1));
+    globalScore = globalScore(1:n,:);
+    globalMeta = globalMeta(1:n,:);
 end
 
 % Session x scale count matrix

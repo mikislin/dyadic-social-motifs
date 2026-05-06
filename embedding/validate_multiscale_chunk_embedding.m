@@ -32,19 +32,43 @@ for s = 1:nScale
         corrMed = median(abs(R(triu(true(size(R)),1))), 'omitnan');
     end
 
+    if isfield(Sm, 'nRetainedForGlobal') && ~isempty(Sm.nRetainedForGlobal)
+        nRetainedForGlobal = Sm.nRetainedForGlobal;
+    else
+        nRetainedForGlobal = NaN;
+    end
+    if isfield(Sm, 'globalCumExplained') && ~isempty(Sm.globalCumExplained)
+        globalCumExplained = Sm.globalCumExplained;
+    elseif isfinite(nRetainedForGlobal) && ~isempty(Sm.explained)
+        globalCumExplained = sum(Sm.explained(1:min(nRetainedForGlobal, numel(Sm.explained))));
+    else
+        globalCumExplained = NaN;
+    end
+
     scaleSummary = [scaleSummary; table( ...
-        s, Sm.chunkSec, nChunks, nPCs, pc1, cum5, corrMed, ...
-        'VariableNames', {'scale_index','chunk_sec','n_chunks','n_pcs','pc1_explained','cum5_explained','median_abs_pc_corr'})]; %#ok<AGROW>
+        s, Sm.chunkSec, nChunks, nPCs, nRetainedForGlobal, globalCumExplained, pc1, cum5, corrMed, ...
+        'VariableNames', {'scale_index','chunk_sec','n_chunks','n_pcs','n_retained_global','global_cum_explained','pc1_explained','cum5_explained','median_abs_pc_corr'})]; %#ok<AGROW>
 end
 
 globalSummary = table();
-if ~isempty(EmbedModel.embedding)
+if isfield(EmbedModel, 'embedding') && ~isempty(EmbedModel.embedding)
     X = EmbedModel.embedding;
     R = corr(X, 'Rows', 'pairwise');
+    explained = [];
+    if isfield(EmbedModel, 'globalModel') && isfield(EmbedModel.globalModel, 'explained')
+        explained = EmbedModel.globalModel.explained(:);
+    elseif isfield(EmbedModel, 'global') && isfield(EmbedModel.global, 'explained')
+        explained = EmbedModel.global.explained(:);
+    end
+    if isempty(explained)
+        pc1 = NaN;
+        cum5 = NaN;
+    else
+        pc1 = explained(1);
+        cum5 = sum(explained(1:min(5,numel(explained))));
+    end
     globalSummary = table( ...
-        size(X,1), size(X,2), ...
-        EmbedModel.globalModel.explained(1), ...
-        sum(EmbedModel.globalModel.explained(1:min(5,numel(EmbedModel.globalModel.explained)))), ...
+        size(X,1), size(X,2), pc1, cum5, ...
         median(abs(R(triu(true(size(R)),1))), 'omitnan'), ...
         'VariableNames', {'n_chunks','n_dims','pc1_explained','cum5_explained','median_abs_corr'});
 end
