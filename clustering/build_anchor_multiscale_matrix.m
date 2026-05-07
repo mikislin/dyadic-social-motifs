@@ -1,14 +1,7 @@
 function Data = build_anchor_multiscale_matrix(ChunkSet, EmbedModel, selectedScales, varargin)
 %BUILD_ANCHOR_MULTISCALE_MATRIX Align selected chunk embeddings on anchors.
 %
-% Key features:
-%   - tolerant scale matching
-%   - exact or nearest anchor alignment across scales
-%   - reference-scale anchoring to avoid sparse union artifacts
-%   - explicit coverage audit before and after retention
-%   - mean imputation for missing scale blocks
-%
-% Output fields
+% Output fields:
 %   Data.X
 %   Data.anchorTable
 %   Data.presence
@@ -18,6 +11,10 @@ function Data = build_anchor_multiscale_matrix(ChunkSet, EmbedModel, selectedSca
 %   Data.retainedMask
 %   Data.retention
 %   Data.source
+%
+% Patch note: anchorTable now preserves anchor_time_s when it is available in
+% scale metadata. This keeps diagnostic ethograms and raw feature traces on
+% the same time axis.
 
 p = inputParser;
 p.addParameter('AnchorSetMode', 'reference', @(x)ischar(x) || isstring(x));
@@ -41,6 +38,7 @@ scaleSecAll = local_get_scale_seconds(ChunkSet);
 selectedScaleSecReq = local_parse_selected_scales(selectedScales);
 [selectedScaleIdx, selectedScaleSec, scaleMatchInfo] = local_match_selected_scales( ...
     scaleSecAll, selectedScaleSecReq, P.ScaleMatchToleranceSec, P.ScaleMatchToleranceRel);
+
 nSel = numel(selectedScaleIdx);
 if nSel == 0
     error('build_anchor_multiscale_matrix:NoSelectedScales', ...
@@ -71,9 +69,9 @@ refLocalIdx = local_choose_reference_scale(scaleData, P.ReferenceScaleMode, P.Re
 refData = scaleData{refLocalIdx};
 refMeta = refData.meta;
 refTol = local_choose_anchor_tolerance(scaleData, refLocalIdx, P.AnchorToleranceFrames);
-
 anchorMode = lower(string(P.AnchorSetMode));
 alignMode = lower(string(P.AnchorAlignment));
+
 if anchorMode == "reference"
     anchorSession = refMeta.session_index(:);
     anchorFrame = refMeta.anchor_frame(:);
@@ -81,20 +79,16 @@ else
     [anchorSession, anchorFrame] = local_build_union_anchor_set(scaleData);
 end
 
+anchorTime = local_anchor_time_from_reference(refMeta, anchorSession, anchorFrame, anchorMode);
+
 nAnchorAll = numel(anchorFrame);
 presence = false(nAnchorAll, nSel);
 rowMap = cell(nSel,1);
 frameDelta = cell(nSel,1);
-
 for i = 1:nSel
     thisMeta = scaleData{i}.meta;
-    if anchorMode == "reference"
-        [loc, dFrame] = local_match_rows_to_reference(anchorSession, anchorFrame, ...
-            thisMeta.session_index(:), thisMeta.anchor_frame(:), alignMode, refTol(i));
-    else
-        [loc, dFrame] = local_match_rows_to_reference(anchorSession, anchorFrame, ...
-            thisMeta.session_index(:), thisMeta.anchor_frame(:), alignMode, refTol(i));
-    end
+    [loc, dFrame] = local_match_rows_to_reference(anchorSession, anchorFrame, ...
+        thisMeta.session_index(:), thisMeta.anchor_frame(:), alignMode, refTol(i));
     rowMap{i} = loc;
     frameDelta{i} = dFrame;
     presence(:,i) = loc > 0;
@@ -106,8 +100,9 @@ retention = local_choose_retention_rule(nPresentAll, missingFracAll, P, nSel);
 retainedMask = retention.retainedMask;
 
 anchorTable = table(anchorSession(retainedMask), anchorFrame(retainedMask), ...
-    nPresentAll(retainedMask), missingFracAll(retainedMask), ...
-    'VariableNames', {'session_index','anchor_frame','n_scales_present','missing_scale_fraction'});
+    anchorTime(retainedMask), nPresentAll(retainedMask), missingFracAll(retainedMask), ...
+    'VariableNames', {'session_index','anchor_frame','anchor_time_s', ...
+    'n_scales_present','missing_scale_fraction'});
 
 blockDim = sum(cellfun(@(s)s.dim, scaleData));
 X = nan(nnz(retainedMask), blockDim);
@@ -206,6 +201,37 @@ if P.Verbose
 end
 end
 
+function anchorTime = local_anchor_time_from_reference(refMeta, anchorSession, anchorFrame, anchorMode)
+anchorTime = nan(size(anchorFrame));
+timeVar = local_pick_var(refMeta.Properties.VariableNames, {'anchor_time_s','anchorTimeSec','timeSec'});
+if isempty(timeVar)
+    return
+end
+
+refSess = refMeta.session_index(:);
+refFrame = refMeta.anchor_frame(:);
+refTime = double(refMeta.(timeVar)(:));
+
+if lower(string(anchorMode)) == "reference" && numel(refTime) == numel(anchorFrame)
+    anchorTime = refTime(:);
+    return
+end
+
+uSess = unique(anchorSession(:));
+for s = 1:numel(uSess)
+    sid = uSess(s);
+    aIdx = find(anchorSession == sid);
+    rIdx = find(refSess == sid);
+    if isempty(aIdx) || isempty(rIdx)
+        continue
+    end
+    for ii = 1:numel(aIdx)
+        [~, jj] = min(abs(refFrame(rIdx) - anchorFrame(aIdx(ii))));
+        anchorTime(aIdx(ii)) = refTime(rIdx(jj));
+    end
+end
+end
+
 function scaleSec = local_get_scale_seconds(ChunkSet)
 assert(isfield(ChunkSet, 'scale'), 'ChunkSet.scale is required.');
 n = numel(ChunkSet.scale);
@@ -226,16 +252,17 @@ end
 function selectedScaleSec = local_parse_selected_scales(selectedScales)
 if istable(selectedScales)
     vars = string(selectedScales.Properties.VariableNames);
-    candidates = ["chunkSec","scaleSec","selectedScaleSec","sec","windowSec","historySec","scale_s","chunk_sec"];
+    candidates = ["chunkSec","scaleSec","selectedScaleSec","sec","windowSec", ...
+        "historySec","scale_s","chunk_sec"];
     hit = intersect(candidates, vars, 'stable');
     if isempty(hit)
-        hit = strings(0,1);
         for i = 1:numel(vars)
             vn = vars(i);
             x = selectedScales.(vn);
             if isnumeric(x) && isvector(x)
                 nameOk = contains(lower(vn), 'scale') || contains(lower(vn), 'sec') || ...
-                    contains(lower(vn), 'window') || contains(lower(vn), 'history') || contains(lower(vn), 'chunk');
+                    contains(lower(vn), 'window') || contains(lower(vn), 'history') || ...
+                    contains(lower(vn), 'chunk');
                 if nameOk
                     hit = vn;
                     break
@@ -279,10 +306,12 @@ for i = 1:numel(requestedScaleSec)
     if d > localTol
         error('build_anchor_multiscale_matrix:ScaleMatchFailed', ...
             ['Could not match requested scale %.4g s to ChunkSet. ' ...
-             'Nearest available scale is %.4g s (|error| = %.4g s, tolerance = %.4g s).'], ...
+            'Nearest available scale is %.4g s (|error| = %.4g s, tolerance = %.4g s).'], ...
             requestedScaleSec(i), allScaleSec(j), d, localTol);
     end
-    idx(i) = j; matchedScaleSec(i) = allScaleSec(j); absErr(i) = d;
+    idx(i) = j;
+    matchedScaleSec(i) = allScaleSec(j);
+    absErr(i) = d;
 end
 [idxUnique, ia] = unique(idx, 'stable');
 idx = idxUnique;
@@ -309,17 +338,22 @@ vars = string(meta.Properties.VariableNames);
 meta = local_rename_if_present(meta, vars, ["anchor_frame","anchorFrame","center_frame","frame"], "anchor_frame");
 vars = string(meta.Properties.VariableNames);
 meta = local_rename_if_present(meta, vars, ["session_index","sessionIdx","session_index_local","session"], "session_index");
+vars = string(meta.Properties.VariableNames);
+meta = local_rename_if_present(meta, vars, ["anchor_time_s","anchorTimeSec","timeSec","time_s"], "anchor_time_s");
 assert(ismember('anchor_frame', meta.Properties.VariableNames), 'Scale meta missing anchor_frame.');
 assert(ismember('session_index', meta.Properties.VariableNames), 'Scale meta missing session_index.');
 meta.anchor_frame = double(meta.anchor_frame(:));
 meta.session_index = double(meta.session_index(:));
+if ismember('anchor_time_s', meta.Properties.VariableNames)
+    meta.anchor_time_s = double(meta.anchor_time_s(:));
+end
 end
 
 function T = local_rename_if_present(T, vars, candidates, newName)
 if ismember(newName, vars), return; end
 hit = intersect(candidates, vars, 'stable');
 if ~isempty(hit)
-    T.Properties.VariableNames{strcmp(T.Properties.VariableNames, hit(1))} = newName;
+    T.Properties.VariableNames{strcmp(T.Properties.VariableNames, hit(1))} = char(newName);
 end
 end
 
@@ -367,8 +401,7 @@ switch mode
         assert(~isempty(refScaleSec), 'ReferenceScaleSec is required when ReferenceScaleMode=''user''.');
         [~, refLocalIdx] = min(abs(selSec - refScaleSec));
     otherwise
-        error('build_anchor_multiscale_matrix:BadReferenceScaleMode', ...
-            'Unknown ReferenceScaleMode: %s', mode);
+        error('build_anchor_multiscale_matrix:BadReferenceScaleMode', 'Unknown ReferenceScaleMode: %s', mode);
 end
 end
 
@@ -422,7 +455,6 @@ if lower(string(alignMode)) == "exact"
     dFrame(tf) = 0;
     return
 end
-
 uSess = unique(refSess(:));
 for s = 1:numel(uSess)
     sid = uSess(s);
@@ -444,8 +476,7 @@ end
 function retention = local_choose_retention_rule(nPresent, missingFrac, P, nSel)
 rule = lower(string(P.RetentionRule));
 if isempty(nPresent)
-    minScales = NaN; maxMissing = NaN; retainedMask = false(0,1);
-    desc = 'empty';
+    minScales = NaN; maxMissing = NaN; retainedMask = false(0,1); desc = 'empty';
 elseif P.RequireAllSelectedScales
     minScales = nSel; maxMissing = 0;
     retainedMask = (nPresent >= minScales);
@@ -478,9 +509,15 @@ end
 end
 
 function v = local_prctile_safe(x, p)
-if isempty(x)
-    v = NaN;
-else
-    v = prctile(double(x(:)), p);
+if isempty(x), v = NaN; else, v = prctile(double(x(:)), p); end
+end
+
+function vn = local_pick_var(allVars, candidates)
+vn = '';
+for i = 1:numel(candidates)
+    if ismember(candidates{i}, allVars)
+        vn = candidates{i};
+        return
+    end
 end
 end

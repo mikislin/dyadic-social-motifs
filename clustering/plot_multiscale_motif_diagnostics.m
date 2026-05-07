@@ -1,37 +1,9 @@
 function Fig = plot_multiscale_motif_diagnostics(Cluster, varargin)
 %PLOT_MULTISCALE_MOTIF_DIAGNOSTICS Publication-style diagnostics for motif discovery.
 %
-% Required input
-%   Cluster : output of cluster_multiscale_chunks
-%
-% Name-value pairs
-%   'ChunkSet'             : original multiscale chunk dataset (optional, enables raw traces)
-%   'ExampleSession'       : session index to show in ethogram/raw trace panel (default 1)
-%   'RawFeatureNames'      : cellstr/string of raw dyad features to plot
-%   'EthogramSmoothFrames' : median-filter window on labels for ethogram (default 9)
-%   'MedoidWindowSec'      : window around medoid anchor for trace plots (default 4)
-%   'MaxClustersToShow'    : max number of clusters in medoid grid (default all)
-%
-% Output
-%   Fig : struct of figure handles
-%
-% Notes
-%   This patched version fixes feature recovery for Figure 3 / Figure 4 by
-%   using a robust fallback chain for feature-to-channel mapping:
-%       1) scaleObj.channelMeta.BaseFeature
-%       2) scaleObj.featureNames
-%       3) ChunkSet.channelMeta.BaseFeature
-%       4) ChunkSet.featureNames
-%
-%   It also supports session/anchor metadata names used in the current repo:
-%       anchor_frame, anchor_time_s, session_index
-%
-%   Usage:
-%       Fig = plot_multiscale_motif_diagnostics(Cluster, ...
-%           'ChunkSet', ChunkSet, ...
-%           'ExampleSession', 1, ...
-%           'RawFeatureNames', {'centroid_dist','mutual_facing', ...
-%                               'radial_speed_12','tangential_speed_12','in_contact'});
+% Patch note: Figure 3 now uses a single session time axis shared by the
+% motif ethogram and raw feature traces. If anchor_time_s is missing or
+% frame-like, it is reconstructed from anchor_frame and FPS when possible.
 
 p = inputParser;
 p.addParameter('ChunkSet', [], @(x)isstruct(x) || isempty(x));
@@ -56,34 +28,36 @@ labels = Cluster.labels(:);
 K = Cluster.NumClusters;
 A = Cluster.Data.anchorTable;
 nAnchors = numel(labels);
-
-assert(height(A) == nAnchors, ...
-    'anchorTable height must match number of retained anchors.');
+assert(height(A) == nAnchors, 'anchorTable height must match number of retained anchors.');
 
 sessionVar = local_pick_var(A.Properties.VariableNames, {'session_index','sessionIdx','session_id'});
 anchorFrameVar = local_pick_var(A.Properties.VariableNames, {'anchor_frame','anchorFrame'});
 anchorTimeVar = local_pick_var(A.Properties.VariableNames, {'anchor_time_s','anchorTimeSec','timeSec'});
-
 assert(~isempty(sessionVar), 'anchorTable must contain session_index/sessionIdx/session_id.');
 assert(~isempty(anchorFrameVar), 'anchorTable must contain anchor_frame/anchorFrame.');
 
-sessionIdx = A.(sessionVar)(:);
-anchorFrame = A.(anchorFrameVar)(:);
-
+sessionIdx = double(A.(sessionVar)(:));
+anchorFrame = double(A.(anchorFrameVar)(:));
 if ~isempty(anchorTimeVar)
-    anchorTime = A.(anchorTimeVar)(:);
+    anchorTime = double(A.(anchorTimeVar)(:));
 else
-    anchorTime = anchorFrame(:);
+    anchorTime = nan(size(anchorFrame));
+end
+
+fpsForPlot = local_get_fps_from_chunkset(P.ChunkSet);
+anchorTime = local_repair_anchor_time(anchorTime, anchorFrame, fpsForPlot);
+xUnit = 'Time (s)';
+if isempty(fpsForPlot) && all(~isfinite(anchorTime))
+    anchorTime = anchorFrame;
+    xUnit = 'Frame';
 end
 
 rawFeatureNames = string(P.RawFeatureNames(:));
 ethColors = local_ethogram_colors(K);
-
 Fig = struct();
 
 %% Figure 1: overview
-Fig.overview = figure('Color','w', 'Name','Motif discovery overview', ...
-    'Position',[40 40 1600 900]);
+Fig.overview = figure('Color','w', 'Name','Motif discovery overview', 'Position',[40 40 1600 900]);
 tiledlayout(2,3, 'TileSpacing','compact', 'Padding','compact');
 
 nexttile;
@@ -93,27 +67,20 @@ txt = {
     sprintf('Clusters: %d', K)
     sprintf('Median max posterior: %.3f', local_get_median_max_post(Cluster))
     sprintf('Stability mean ARI: %.3f', local_get_stability_mean_ari(Cluster))
-    sprintf('PCs used: %d', local_get_npcs_used(Cluster))
-    };
+    sprintf('PCs used: %d', local_get_npcs_used(Cluster))};
 text(0.02, 0.95, txt, 'VerticalAlignment','top', 'FontSize', 12);
 
 nexttile;
 bar(1:K, Cluster.occupancyFrac(:), 'FaceColor',[0.25 0.25 0.25]);
-xlabel('Cluster'); ylabel('Occupancy fraction');
-title('Cluster occupancy');
-box off
+xlabel('Cluster'); ylabel('Occupancy fraction'); title('Cluster occupancy'); box off
 
 nexttile;
 if isfield(Cluster, 'maxPosterior') && ~isempty(Cluster.maxPosterior)
     medConf = accumarray(labels, Cluster.maxPosterior(:), [K 1], @median, NaN);
     bar(1:K, medConf, 'FaceColor',[0.25 0.25 0.25]);
-    ylim([0 1.02]);
-    xlabel('Cluster'); ylabel('Median posterior');
-    title('Confidence by cluster');
-    box off
+    ylim([0 1.02]); xlabel('Cluster'); ylabel('Median posterior'); title('Confidence by cluster'); box off
 else
-    axis off
-    text(0.1, 0.5, 'maxPosterior unavailable', 'FontSize', 12);
+    axis off; text(0.1, 0.5, 'maxPosterior unavailable', 'FontSize', 12);
 end
 
 nexttile;
@@ -123,15 +90,11 @@ if isfield(Cluster, 'Xpca') && size(Cluster.Xpca,2) >= 2
         idx = labels == k;
         if any(idx)
             scatter(Cluster.Xpca(idx,1), Cluster.Xpca(idx,2), 8, ...
-                'MarkerFaceColor', ethColors(k,:), ...
-                'MarkerFaceAlpha', 0.35, ...
+                'MarkerFaceColor', ethColors(k,:), 'MarkerFaceAlpha', 0.35, ...
                 'MarkerEdgeColor', 'none');
         end
     end
-    xlabel('PC1'); ylabel('PC2');
-    title('Integrated motif embedding');
-    box off
-    grid on
+    xlabel('PC1'); ylabel('PC2'); title('Integrated motif embedding'); box off; grid on
 else
     axis off
 end
@@ -146,9 +109,7 @@ if isfield(Cluster, 'PCA') && isfield(Cluster.PCA, 'explained')
     yyaxis right
     plot(1:nShow, cumsum(ex(1:nShow)), 's--', 'LineWidth',1.5, 'MarkerSize',4);
     ylabel('Cumulative explained (%)');
-    xlabel('PC');
-    title('PCA variance explained');
-    box off
+    xlabel('PC'); title('PCA variance explained'); box off
 else
     axis off
 end
@@ -156,53 +117,35 @@ end
 nexttile;
 if isfield(Cluster, 'stability') && isfield(Cluster.stability, 'ARI')
     histogram(Cluster.stability.ARI, 'BinMethod','sturges', 'FaceColor',[0.3 0.3 0.3]);
-    xlabel('Bootstrap ARI'); ylabel('Count');
-    title('Stability distribution');
-    box off
+    xlabel('Bootstrap ARI'); ylabel('Count'); title('Stability distribution'); box off
 else
     axis off
 end
-
 sgtitle('Motif discovery overview', 'FontWeight','bold', 'FontSize',16);
 
 %% Figure 2: ethogram-style raster
-Fig.ethogram = figure('Color','w', 'Name','Motif ethogram', ...
-    'Position',[70 70 1700 700]);
-
 sess = P.ExampleSession;
 idxSess = find(sessionIdx == sess);
 assert(~isempty(idxSess), 'Requested ExampleSession not found in Cluster.Data.anchorTable.');
-
 [~, order] = sort(anchorFrame(idxSess));
 idxSess = idxSess(order);
-
 labsSess = labels(idxSess);
 timeSess = anchorTime(idxSess);
 frameSess = anchorFrame(idxSess); %#ok<NASGU>
-
 labsSmooth = local_smooth_labels(labsSess, P.EthogramSmoothFrames);
 
+Fig.ethogram = figure('Color','w', 'Name','Motif ethogram', 'Position',[70 70 1700 700]);
 tiledlayout(3,1, 'TileSpacing','compact', 'Padding','compact');
 
 nexttile;
 imagesc(timeSess(:)', 1, labsSess(:)');
-set(gca, 'YDir', 'normal');
-colormap(gca, ethColors);
-clim([1 K]);
-ylabel('Raw');
-title(sprintf('Session %d motif ethogram', sess));
-set(gca,'YTick',[]);
-box off
+set(gca, 'YDir', 'normal'); colormap(gca, ethColors); clim([1 K]);
+ylabel('Raw'); title(sprintf('Session %d motif ethogram', sess)); set(gca,'YTick',[]); box off
 
 nexttile;
 imagesc(timeSess(:)', 1, labsSmooth(:)');
-set(gca, 'YDir', 'normal');
-colormap(gca, ethColors);
-clim([1 K]);
-ylabel('Smoothed');
-title(sprintf('Session %d bout-smoothed ethogram', sess));
-set(gca,'YTick',[]);
-box off
+set(gca, 'YDir', 'normal'); colormap(gca, ethColors); clim([1 K]);
+ylabel('Smoothed'); title(sprintf('Session %d bout-smoothed ethogram', sess)); set(gca,'YTick',[]); box off
 
 nexttile;
 hold on
@@ -212,60 +155,45 @@ for k = 1:K
         plot(timeSess(idx), k * ones(nnz(idx),1), '.', 'Color', ethColors(k,:), 'MarkerSize', 8);
     end
 end
-ylim([0.5 K+0.5]);
-xlabel('Time (s)');
-ylabel('Motif');
-title('Smoothed motif assignments');
-box off
-grid on
+ylim([0.5 K+0.5]); xlabel(xUnit); ylabel('Motif'); title('Smoothed motif assignments'); box off; grid on
 
-%% Figure 3: raw feature traces for session (if ChunkSet available)
-Fig.raw_session = figure('Color','w', 'Name','Raw feature traces by motif', ...
-    'Position',[90 90 1700 1000]);
-
+%% Figure 3: raw feature traces for session
+Fig.raw_session = figure('Color','w', 'Name','Raw feature traces by motif', 'Position',[90 90 1700 1000]);
 if isempty(P.ChunkSet)
     axis off
-    text(0.05, 0.5, ['ChunkSet not provided. Re-run with ' ...
-        '''ChunkSet'', ChunkSet to show raw multiscale traces.'], 'FontSize', 12);
+    text(0.05, 0.5, ['ChunkSet not provided. Re-run with ''ChunkSet'', ChunkSet ' ...
+        'to show raw multiscale traces.'], 'FontSize', 12);
 else
     nFeat = numel(rawFeatureNames);
     tiledlayout(nFeat + 1, 1, 'TileSpacing','compact', 'Padding','compact');
 
     nexttile;
     imagesc(timeSess(:)', 1, labsSmooth(:)');
-    set(gca, 'YDir', 'normal');
-    colormap(gca, ethColors);
-    clim([1 K]);
-    ylabel('Motif');
-    title(sprintf('Session %d ethogram with requested raw features', sess));
-    set(gca,'YTick',[]);
-    box off
+    set(gca, 'YDir', 'normal'); colormap(gca, ethColors); clim([1 K]);
+    ylabel('Motif'); title(sprintf('Session %d ethogram with requested raw features', sess));
+    set(gca,'YTick',[]); box off
 
     refScaleIdx = local_choose_reference_scale(P.ChunkSet, Cluster);
     scaleObj = P.ChunkSet.scale(refScaleIdx);
 
     for f = 1:nFeat
-        nexttile;
-        hold on
+        nexttile; hold on
         featName = rawFeatureNames(f);
-
         ok = false;
-        [tTrace, xTrace] = local_extract_session_feature_trace(scaleObj, P.ChunkSet, sess, featName);
+        [tTrace, xTrace] = local_extract_session_feature_trace(scaleObj, P.ChunkSet, sess, featName, fpsForPlot);
         if ~isempty(tTrace) && ~isempty(xTrace)
             ok = true;
             local_add_ethogram_background(gca, timeSess, labsSmooth, ethColors);
-            plot(tTrace, xTrace, 'k-', 'LineWidth', 1.2);
+            plot(tTrace, xTrace, 'k-', 'LineWidth', 1.0);
+            xlim([min(timeSess) max(timeSess)]);
         end
-
         ylabel(strrep(featName,'_','\_'), 'Interpreter','tex');
         if f == nFeat
-            xlabel('Time (s)');
+            xlabel(xUnit);
         else
             set(gca,'XTickLabel',[]);
         end
-        grid on
-        box off
-
+        grid on; box off
         if ~ok
             text(0.05, 0.5, sprintf('Could not recover feature %s from ChunkSet.', featName), ...
                 'Units','normalized', 'FontSize',11);
@@ -274,101 +202,70 @@ else
 end
 
 %% Figure 4: medoid-centered multiscale raw exemplars
-Fig.medoids = figure('Color','w', 'Name','Medoid-centered multiscale exemplars', ...
-    'Position',[110 110 1800 1100]);
-
+Fig.medoids = figure('Color','w', 'Name','Medoid-centered multiscale exemplars', 'Position',[110 110 1800 1100]);
 if isempty(P.ChunkSet)
     axis off
-    text(0.05, 0.5, ['ChunkSet not provided. Re-run with ' ...
-        '''ChunkSet'', ChunkSet to show medoid-centered raw exemplars.'], 'FontSize', 12);
+    text(0.05, 0.5, ['ChunkSet not provided. Re-run with ''ChunkSet'', ChunkSet ' ...
+        'to show medoid-centered raw exemplars.'], 'FontSize', 12);
 else
     clustersToShow = 1:min(K, P.MaxClustersToShow);
     nFeat = min(numel(rawFeatureNames), 5);
     tiledlayout(numel(clustersToShow), nFeat, 'TileSpacing','compact', 'Padding','compact');
-
     scaleIdxAll = local_get_selected_scale_indices(P.ChunkSet, Cluster);
-
     for r = 1:numel(clustersToShow)
         k = clustersToShow(r);
-
-        if isnan(Cluster.medoidIdx(k))
-            for c = 1:nFeat
-                nexttile; axis off
-            end
+        if ~isfield(Cluster, 'medoidIdx') || isnan(Cluster.medoidIdx(k))
+            for c = 1:nFeat, nexttile; axis off; end
             continue
         end
-
         rowIdx = Cluster.medoidIdx(k);
         sessK = sessionIdx(rowIdx);
         frameK = anchorFrame(rowIdx);
-
         for c = 1:nFeat
-            nexttile;
-            hold on
+            nexttile; hold on
             featName = rawFeatureNames(c);
             plotted = false;
-
             for s = 1:numel(scaleIdxAll)
                 sc = P.ChunkSet.scale(scaleIdxAll(s));
                 [tt, xx] = local_extract_anchor_feature_trace(sc, P.ChunkSet, sessK, frameK, featName);
                 if ~isempty(tt) && ~isempty(xx)
-                    plot(tt - tt(round(end/2)), xx, 'LineWidth', 1.0);
+                    plot(tt, xx, 'LineWidth', 1.0);
                     plotted = true;
                 end
             end
-
             xline(0, 'k--', 'LineWidth', 0.8);
-
-            if r == 1
-                title(strrep(featName,'_','\_'), 'Interpreter','tex');
-            end
-            if c == 1
-                ylabel(sprintf('Cluster %d', k));
-            end
-            if r == numel(clustersToShow)
-                xlabel('Time relative to medoid anchor (s)');
-            end
-
-            grid on
-            box off
-
+            if r == 1, title(strrep(featName,'_','\_'), 'Interpreter','tex'); end
+            if c == 1, ylabel(sprintf('Cluster %d', k)); end
+            if r == numel(clustersToShow), xlabel('Time relative to medoid anchor (s)'); end
+            grid on; box off
             if ~plotted
                 text(0.05, 0.5, 'Trace unavailable', 'Units','normalized', 'FontSize', 10);
             end
         end
     end
 end
-
 sgtitle('Medoid-centered multiscale raw feature exemplars', 'FontWeight','bold', 'FontSize',16);
-
 end
 
 function cols = local_ethogram_colors(K)
 base = [ ...
-    0.1216 0.4667 0.7059
-    0.8392 0.1529 0.1569
-    0.1725 0.6275 0.1725
-    0.5804 0.4039 0.7412
-    1.0000 0.4980 0.0549
-    0.0902 0.7451 0.8118
-    0.8902 0.4667 0.7608
-    0.5490 0.3373 0.2941
-    0.4980 0.4980 0.4980
-    0.7373 0.7412 0.1333];
-if K <= size(base,1)
-    cols = base(1:K,:);
-else
-    cols = lines(K);
-end
+0.1216 0.4667 0.7059
+0.8392 0.1529 0.1569
+0.1725 0.6275 0.1725
+0.5804 0.4039 0.7412
+1.0000 0.4980 0.0549
+0.0902 0.7451 0.8118
+0.8902 0.4667 0.7608
+0.5490 0.3373 0.2941
+0.4980 0.4980 0.4980
+0.7373 0.7412 0.1333];
+if K <= size(base,1), cols = base(1:K,:); else, cols = lines(K); end
 end
 
 function y = local_smooth_labels(x, win)
 x = x(:);
 win = max(1, round(win));
-if win <= 1
-    y = x;
-    return
-end
+if win <= 1, y = x; return; end
 pad = floor(win/2);
 xp = [repmat(x(1), pad, 1); x; repmat(x(end), pad, 1)];
 y = x;
@@ -436,40 +333,37 @@ end
 idx = idx(isfinite(idx) & idx >= 1 & idx <= numel(ChunkSet.scale));
 end
 
-function [t, x] = local_extract_session_feature_trace(scaleObj, parentChunkSet, sess, featName)
+function [t, x] = local_extract_session_feature_trace(scaleObj, parentChunkSet, sess, featName, fpsFallback)
 t = [];
 x = [];
-
-if ~isfield(scaleObj, 'meta') || ~isfield(scaleObj, 'Xraw')
-    return
-end
+if ~isfield(scaleObj, 'meta') || ~isfield(scaleObj, 'Xraw'), return; end
 M = scaleObj.meta;
-
 sessCol = local_pick_var(M.Properties.VariableNames, {'session_index','sessionIdx','session_id'});
 timeCol = local_pick_var(M.Properties.VariableNames, {'anchor_time_s','timeSec','anchorTimeSec'});
-
-if isempty(sessCol) || isempty(timeCol)
-    return
-end
-
+frameCol = local_pick_var(M.Properties.VariableNames, {'anchor_frame','anchorFrame'});
+if isempty(sessCol), return; end
 featCol = local_find_feature_column(scaleObj, parentChunkSet, featName);
-if isempty(featCol)
-    return
-end
-
+if isempty(featCol), return; end
 idx = find(M.(sessCol) == sess);
-if isempty(idx)
-    return
+if isempty(idx), return; end
+
+if ~isempty(timeCol)
+    tt = double(M.(timeCol)(idx));
+else
+    if isempty(frameCol), return; end
+    fps = local_get_fps_from_scale(scaleObj, M, idx(1));
+    if isempty(fps), fps = fpsFallback; end
+    if isempty(fps) || ~isfinite(fps) || fps <= 0
+        tt = double(M.(frameCol)(idx));
+    else
+        tt = double(M.(frameCol)(idx)) ./ double(fps);
+    end
 end
 
-[tt, ord] = sort(M.(timeCol)(idx));
+[tt, ord] = sort(tt);
 idx = idx(ord);
-
 Xr = scaleObj.Xraw;
-if ndims(Xr) ~= 3 || featCol > size(Xr,3)
-    return
-end
-
+if ndims(Xr) ~= 3 || featCol > size(Xr,3), return; end
 mid = round(size(Xr,2) / 2);
 x = squeeze(Xr(idx, mid, featCol));
 t = tt(:);
@@ -479,47 +373,22 @@ end
 function [t, x] = local_extract_anchor_feature_trace(scaleObj, parentChunkSet, sess, frameAnchor, featName)
 t = [];
 x = [];
-
-if ~isfield(scaleObj, 'meta') || ~isfield(scaleObj, 'Xraw')
-    return
-end
-
+if ~isfield(scaleObj, 'meta') || ~isfield(scaleObj, 'Xraw'), return; end
 M = scaleObj.meta;
 sessCol = local_pick_var(M.Properties.VariableNames, {'session_index','sessionIdx','session_id'});
 frameCol = local_pick_var(M.Properties.VariableNames, {'anchor_frame','anchorFrame'});
-
-if isempty(sessCol) || isempty(frameCol)
-    return
-end
-
+if isempty(sessCol) || isempty(frameCol), return; end
 featCol = local_find_feature_column(scaleObj, parentChunkSet, featName);
-if isempty(featCol)
-    return
-end
-
+if isempty(featCol), return; end
 idxSess = find(M.(sessCol) == sess);
-if isempty(idxSess)
-    return
-end
-
+if isempty(idxSess), return; end
 [~, ix] = min(abs(M.(frameCol)(idxSess) - frameAnchor));
 row = idxSess(ix);
-
 Xr = scaleObj.Xraw;
-if ndims(Xr) ~= 3 || featCol > size(Xr,3)
-    return
-end
-
+if ndims(Xr) ~= 3 || featCol > size(Xr,3), return; end
 x = squeeze(Xr(row,:,featCol));
 x = x(:);
-
-fps = [];
-if isfield(scaleObj, 'fps') && ~isempty(scaleObj.fps)
-    fps = scaleObj.fps;
-end
-if isempty(fps) && ismember('fps', M.Properties.VariableNames)
-    fps = M.fps(row);
-end
+fps = local_get_fps_from_scale(scaleObj, M, row);
 if isempty(fps) || ~isfinite(fps) || fps <= 0
     dt = [];
     if ismember('start_time_s', M.Properties.VariableNames) && ismember('stop_time_s', M.Properties.VariableNames)
@@ -534,38 +403,86 @@ if isempty(fps) || ~isfinite(fps) || fps <= 0
         fps = 1 / dt;
     end
 end
-
 t = ((1:numel(x))' - ceil(numel(x)/2)) ./ fps;
 end
 
 function featCol = local_find_feature_column(scaleObj, parentChunkSet, featName)
 featCol = [];
-
-% 1) Per-scale channel metadata
+featName = string(featName);
 if isfield(scaleObj, 'channelMeta') && istable(scaleObj.channelMeta) && ...
         ismember('BaseFeature', scaleObj.channelMeta.Properties.VariableNames)
-    featCol = find(strcmp(string(scaleObj.channelMeta.BaseFeature), string(featName)), 1);
-    if ~isempty(featCol), return, end
+    featCol = find(strcmp(string(scaleObj.channelMeta.BaseFeature), featName), 1);
+    if ~isempty(featCol), return; end
 end
-
-% 2) Per-scale feature names
 if isfield(scaleObj, 'featureNames') && ~isempty(scaleObj.featureNames)
-    featCol = find(strcmp(string(scaleObj.featureNames), string(featName)), 1);
-    if ~isempty(featCol), return, end
+    featCol = find(strcmp(string(scaleObj.featureNames), featName), 1);
+    if ~isempty(featCol), return; end
 end
-
-% 3) Top-level ChunkSet channel metadata
 if ~isempty(parentChunkSet) && isfield(parentChunkSet, 'channelMeta') && ...
         istable(parentChunkSet.channelMeta) && ...
         ismember('BaseFeature', parentChunkSet.channelMeta.Properties.VariableNames)
-    featCol = find(strcmp(string(parentChunkSet.channelMeta.BaseFeature), string(featName)), 1);
-    if ~isempty(featCol), return, end
+    featCol = find(strcmp(string(parentChunkSet.channelMeta.BaseFeature), featName), 1);
+    if ~isempty(featCol), return; end
+end
+if ~isempty(parentChunkSet) && isfield(parentChunkSet, 'featureNames') && ~isempty(parentChunkSet.featureNames)
+    featCol = find(strcmp(string(parentChunkSet.featureNames), featName), 1);
+    if ~isempty(featCol), return; end
+end
 end
 
-% 4) Top-level feature names
-if ~isempty(parentChunkSet) && isfield(parentChunkSet, 'featureNames') && ~isempty(parentChunkSet.featureNames)
-    featCol = find(strcmp(string(parentChunkSet.featureNames), string(featName)), 1);
-    if ~isempty(featCol), return, end
+function anchorTime = local_repair_anchor_time(anchorTime, anchorFrame, fps)
+anchorTime = double(anchorTime(:));
+anchorFrame = double(anchorFrame(:));
+bad = isempty(anchorTime) || numel(anchorTime) ~= numel(anchorFrame) || all(~isfinite(anchorTime));
+if bad
+    if ~isempty(fps) && isfinite(fps) && fps > 0
+        anchorTime = anchorFrame ./ fps;
+    else
+        anchorTime = anchorFrame;
+    end
+    return
+end
+
+finiteTime = anchorTime(isfinite(anchorTime));
+if numel(finiteTime) >= 3
+    dt = median(diff(sort(unique(finiteTime))), 'omitnan');
+    if isfinite(dt) && dt > 1 && ~isempty(fps) && isfinite(fps) && fps > 0
+        anchorTime = anchorFrame ./ fps;
+    end
+end
+end
+
+function fps = local_get_fps_from_chunkset(ChunkSet)
+fps = [];
+if isempty(ChunkSet) || ~isfield(ChunkSet, 'scale') || isempty(ChunkSet.scale), return; end
+for s = 1:numel(ChunkSet.scale)
+    sc = ChunkSet.scale(s);
+    fps = local_get_fps_from_scale(sc, local_get_meta_or_empty(sc), []);
+    if ~isempty(fps) && isfinite(fps) && fps > 0, return; end
+end
+end
+
+function M = local_get_meta_or_empty(sc)
+if isfield(sc, 'meta') && istable(sc.meta), M = sc.meta; else, M = table(); end
+end
+
+function fps = local_get_fps_from_scale(scaleObj, M, row)
+fps = [];
+if isfield(scaleObj, 'fps') && ~isempty(scaleObj.fps) && isfinite(scaleObj.fps) && scaleObj.fps > 0
+    fps = double(scaleObj.fps);
+    return
+end
+if nargin >= 2 && istable(M) && ismember('fps', M.Properties.VariableNames)
+    vals = double(M.fps(:));
+    if nargin >= 3 && ~isempty(row) && row >= 1 && row <= numel(vals) && isfinite(vals(row)) && vals(row) > 0
+        fps = vals(row);
+        return
+    end
+    vals = vals(isfinite(vals) & vals > 0);
+    if ~isempty(vals)
+        fps = median(vals);
+        return
+    end
 end
 end
 
