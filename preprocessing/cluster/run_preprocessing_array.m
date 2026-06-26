@@ -17,6 +17,8 @@ P.debug.enabled = false;
 
 files = dir(fullfile(inDir, 'session_*.mat'));
 assert(taskId <= numel(files), 'Task id exceeds number of session files');
+[~, order] = sort({files.name});
+files = files(order);
 
 if ~isfolder(outDir)
     mkdir(outDir);
@@ -24,6 +26,8 @@ end
 
 inFile = fullfile(files(taskId).folder, files(taskId).name);
 S = load(inFile, 'sessionRaw');
+assert(isfield(S, 'sessionRaw'), 'run_preprocessing_array:MissingSessionRaw', ...
+    'File does not contain sessionRaw: %s', inFile);
 out = preprocess_session(S.sessionRaw, P);
 [~, name] = fileparts(files(taskId).name);
 save(fullfile(outDir, [name '_preproc.mat']), 'out', '-v7.3');

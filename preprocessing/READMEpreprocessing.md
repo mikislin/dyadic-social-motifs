@@ -9,6 +9,17 @@ This package preprocesses dyadic SLEAP tracks with:
 - compact QC outputs using sparse masks
 - export and cluster scripts for one-session-per-file preprocessing
 
+## Repository organization
+- `preprocessing/preprocessing/`: active reusable preprocessing algorithms and QC plotting.
+- `preprocessing/tests/`: MATLAB regression tests for preprocessing behavior.
+- `preprocessing/cluster/`: optional SLURM wrapper for one-session-per-task execution.
+- `preprocessing/io/`: legacy dbase import/export helpers for historical workflows.
+- top-level `io/`: active paper-pipeline manifest, cohort, QC, and raw-session loading helpers.
+
+Keep new paper-facing path, manifest, cohort, and raw-data loading code in top-level `io/`.
+Keep `preprocessing/preprocessing/` focused on session-level track cleaning functions that do
+not know about paper cohorts or local file layouts.
+
 ## Expected raw input per session
 A session struct should contain:
 - `SLEAPtracks`: `[T x nodes x 2 x animals]`
@@ -28,7 +39,12 @@ P = default_preprocessing_params();
 out = preprocess_session(sessionRaw, P);
 ```
 
-## Export dbase to per-session MAT files
+`out.qc.sessionStats` includes a prediction-repair audit. Prediction-issue frames are
+frames with low-confidence, jump, or geometry flags. Repaired prediction-issue frames
+are the subset that received interpolation/repair and are not final bad frames; they
+should be interpreted as usable under the predefined QC rules, not as ground truth.
+
+## Legacy dbase export to per-session MAT files
 ```matlab
 load('your_dbase.mat', 'dbase')
 export_dbase_sessions_to_mat(dbase, '/path/to/preproc_input')

@@ -1,0 +1,17 @@
+condition_id,condition_label,display_label,color_hex,marker,plot_order,notes
+WT_WT,WT Pair,WT Pair,#0072B2,o,10,Freely moving wild-type pair reference.
+WT,WT single,WT Single,#56B4E9,^,20,Single wild-type mouse control.
+M_WT,Mixed Pair,Mixed Pair,#7B3294,o,30,Mutant and wild-type dyad.
+M_M,Mut Pair,Mut Pair,#D55E00,o,40,Mutant pair.
+WT_A,WT + anesthetized center,WT + Anesth,#009E73,s,50,Wild-type with anesthetized center mouse.
+M_A,Mut + anesthetized center,Mut + Anesth,#6E6E6E,s,60,Mutant with anesthetized center mouse.
+WT_DCZPFC,WT DCZ PFC,WT DCZ PFC,#00A6D6,d,70,Wild-type PFC DCZ chemogenetic condition.
+M_DCZPFC,Mut DCZ PFC,Mut DCZ PFC,#E69F00,d,80,Mutant PFC DCZ chemogenetic condition.
+M_SALPFC,Mut SAL PFC,Mut SAL PFC,#CC79A7,d,90,Mutant PFC saline condition.
+M_SALcPFC,Mut SAL control PFC,Mut SAL cPFC,#F0A3C8,d,100,Mutant PFC saline control condition.
+M_DCZcPFC,Mut DCZ control PFC,Mut DCZ cPFC,#8C510A,d,110,Mutant PFC DCZ control condition.
+WT_DCZDCN,WT DCZ DCN,WT DCZ DCN,#009E73,v,120,Wild-type DCN DCZ chemogenetic condition.
+M_DCZDCN,Mut DCZ DCN,Mut DCZ DCN,#B35806,v,130,Mutant DCN DCZ chemogenetic condition.
+M_SALDCN,Mut SAL DCN,Mut SAL DCN,#C51B7D,v,140,Mutant DCN saline condition.
+M_SALcDCN,Mut SAL control DCN,Mut SAL cDCN,#9E9AC8,v,150,Mutant DCN saline control condition.
+M_DCZcDCN,Mut DCZ control DCN,Mut DCZ cDCN,#7F8C00,v,160,Mutant DCN DCZ control condition.

@@ -1,10 +1,11 @@
-function [geomMaskNode, info] = detect_geometry_outliers(tracksClean, nodePairs, prctileRange, scores)
+function [geomMaskNode, info] = detect_geometry_outliers(tracksClean, nodePairs, prctileRange, scores, varargin)
 % Detect geometry outliers and assign blame to one node in each offending pair.
 [T,nNodes,~] = size(tracksClean);
 geomMaskNode = false(T,nNodes);
 info = struct();
 info.nodePairs = nodePairs;
 info.thresholds = nan(size(nodePairs,1),2);
+info.blameNode = nan(T, size(nodePairs,1));
 
 if nargin < 4
     scores = [];
@@ -44,6 +45,7 @@ for p = 1:size(nodePairs,1)
             if d2(t) > d1(t), blame = n2; else, blame = n1; end
         end
         geomMaskNode(t, blame) = true;
+        info.blameNode(t,p) = blame;
     end
 end
 end

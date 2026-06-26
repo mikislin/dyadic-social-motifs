@@ -6,7 +6,8 @@ if nargin < 4 || isempty(repairMask)
 end
 
 xySmooth = xyIn;
-smoothMeta = struct('n_segments_smoothed', 0, 'segment_lengths', []);
+smoothMeta = struct('n_segments_smoothed', 0, 'segment_lengths', [], ...
+    'n_breakpoints', 0);
 if strcmpi(char(smoothParams.method), 'none')
     return;
 end
@@ -25,10 +26,13 @@ if breakAtRepairs
     halfWidth = 1;
     if isfield(smoothParams, 'repair_break_halfwidth')
         halfWidth = max(0, round(smoothParams.repair_break_halfwidth));
+    elseif isfield(smoothParams, 'break_dilate_frames')
+        halfWidth = max(0, round(smoothParams.break_dilate_frames));
     end
     repairBreak = dilate_mask_1d(repairMask, halfWidth);
     breakMask = breakMask | repairBreak;
 end
+smoothMeta.n_breakpoints = nnz(breakMask);
 
 runs = find_runs(~breakMask);
 if isempty(runs)

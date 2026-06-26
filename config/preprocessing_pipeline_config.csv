@@ -1,0 +1,30 @@
+section,key,value,type,description
+paths,preprocessed_output_dir,derived/preprocessed,string,Directory for run_03 preprocessing outputs relative to repo root.
+paths,preprocess_session_subdir,sessions,string,Subdirectory containing one preprocessed MAT file per session.
+paths,preprocess_summary_file,preprocess_all_summary.csv,string,Run_03 session-level summary CSV name.
+paths,preprocess_qc_output_dir,derived/preprocess_qc,string,Directory for run_04 QC tables and figures relative to repo root.
+paths,preprocess_qc_figure_subdir,figures,string,Subdirectory for run_04 QC figures.
+run_03,skip_existing,true,logical,Reuse existing successful per-session preprocessing outputs.
+run_03,return_raw,false,logical,Do not save raw SLEAP tracks inside derived preprocessing outputs.
+run_03,make_plots,false,logical,Do not create per-session preprocessing plots during full preprocessing.
+run_03,store_full_masks,false,logical,Do not store dense full masks in preprocessing outputs.
+run_03,debug_verbose,false,logical,Suppress per-animal preprocessing debug logging.
+qc,motif_warn_badframe_fraction,0.10,double,Motif-discovery sessions above this bad-frame fraction are flagged for review.
+qc,motif_max_badframe_fraction,0.25,double,Motif-discovery sessions above this bad-frame fraction fail preprocessing QC.
+qc,condition_style_file,experimental_group_styles.csv,string,Config file defining stable labels and colors for experimental groups.
+figures,export_png,true,logical,Write PNG copies of QC figures.
+figures,export_pdf,true,logical,Write PDF copies of QC figures.
+figures,dpi,320,integer,PNG export resolution.
+figures,font_name,Arial,string,Figure font.
+figures,font_size,9,double,Base figure font size.
+figures,title_font_size,11,double,Figure title font size.
+figures,marker_size,18,double,Scatter marker size.
+figures,jitter_width,0.16,double,Horizontal jitter used for overlaid session or animal points.
+figures,story_color_prediction_issue,#D55E00,string,Color for frames or samples with low-confidence jump or geometry flags.
+figures,story_color_interpolated,#56B4E9,string,Color for interpolated prediction-issue frames or samples.
+figures,story_color_repaired,#009E73,string,Color for repaired and usable prediction-issue frames or samples.
+figures,story_color_unresolved,#CC79A7,string,Color for unresolved prediction-issue frames or samples.
+figures,story_color_badframe,#333333,string,Color for final bad frames.
+figures,grid_color,#D9D9D9,string,Light grid color.
+bodypoints,bodypoint_metadata_file,sleap_bodypart_metadata.csv,string,Machine-readable SLEAP bodypart metadata file in config/.
+bodypoints,bodypoint_labels,Nose;Neck;L ear;R ear;LF paw;RF paw;LH paw;RH paw;Body;Tail base;Tail mid;Tail tip;Body mid,string_vector,Visible labels for SLEAP body points in preprocessing QC figures; overridden by metadata display_label when metadata file is present.

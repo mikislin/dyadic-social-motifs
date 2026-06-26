@@ -5,16 +5,14 @@ xyOut = xyIn;
 time = time(:);
 interpMask = false(size(xyIn,1),1);
 missing = any(~isfinite(xyIn), 2);
-% Early exit: no missing data → skip everything
+
+% Early exit: no missing data.
 if ~any(missing)
     return
 end
-runs = find_runs(missing);
 
+runs = find_runs(missing);
 for i = 1:size(runs,1)
-    if isempty(runs)
-        return
-    end
     s = runs(i,1);
     e = runs(i,2);
     runLen = e - s + 1;

@@ -71,8 +71,8 @@ p2.midBody  = squeeze(tracks(:, nodeMap.midBody,  :, 2));
 p2.tailBase = squeeze(tracks(:, nodeMap.tailBase, :, 2));
 p2.tailMid  = squeeze(tracks(:, nodeMap.tailMid,  :, 2));
 
-c1 = nanmean(cat(3, p1.body, p1.midBody, p1.tailBase), 3);
-c2 = nanmean(cat(3, p2.body, p2.midBody, p2.tailBase), 3);
+c1 = mean(cat(3, p1.body, p1.midBody, p1.tailBase), 3, 'omitnan');
+c2 = mean(cat(3, p2.body, p2.midBody, p2.tailBase), 3, 'omitnan');
 
 % Head/body axis: tailBase -> nose.
 a1 = normalize_rows(p1.nose - p1.tailBase);
@@ -115,8 +115,6 @@ vel2 = gradient_by_time(c2 * px2mm, fps);
 acc1 = gradient_by_time(vel1, fps);
 acc2 = gradient_by_time(vel2, fps);
 
-speed1 = row_norm(vel1);
-speed2 = row_norm(vel2);
 rel_vel = vel2 - vel1;
 
 rhat12 = normalize_rows(v12);
@@ -185,7 +183,7 @@ raw.mutual_approach = double(mutual_approach);
 raw.withdrawal = double(withdrawal);
 raw.asym_investigate = double(asym_investigate);
 
-featureNames = fieldnames(raw)';
+[featureNames, featureMeta] = default_dyad_feature_metadata();
 X = zeros(T, numel(featureNames));
 for k = 1:numel(featureNames)
     X(:,k) = raw.(featureNames{k});
@@ -204,37 +202,6 @@ if ~isempty(opts.badframes)
         error('opts.badframes must have T rows.');
     end
 end
-
-families = {
-    'distance','distance','distance','distance', ...
-    'distance','distance','distance','distance', ...
-    'egocentric','egocentric','egocentric','egocentric', ...
-    'orientation','orientation','orientation','orientation', ...
-    'kinematics','kinematics','kinematics','kinematics','kinematics', ...
-    'coupling','coupling', ...
-    'orientation','orientation','orientation','orientation', ...
-    'contact','contact','contact','contact', ...
-    'interaction_logic','interaction_logic','interaction_logic'}';
-
-isCircular = contains(featureNames, 'bearing_')' | contains(featureNames, 'heading_diff')';
-isBoolean  = ismember(featureNames, {'in_contact','head_close','body_close','close_pair','mutual_approach','withdrawal'});
-isDirected = contains(featureNames, '_1') | contains(featureNames, '_2') | contains(featureNames, '1_to_') | contains(featureNames, '2_to_');
-
-transformHint = repmat("none", numel(featureNames), 1);
-for k = 1:numel(featureNames)
-    if contains(featureNames{k}, 'dist')
-        transformHint(k) = "log1p";
-    elseif isBoolean(k)
-        transformHint(k) = "binary";
-    elseif isCircular(k)
-        transformHint(k) = "circular";
-    else
-        transformHint(k) = "zscore";
-    end
-end
-
-featureMeta = table(featureNames(:), families, isDirected(:), isCircular(:), isBoolean(:), transformHint, ...
-    'VariableNames', {'Name','Family','IsDirected','IsCircular','IsBoolean','TransformHint'});
 
 dyad = struct();
 dyad.time_s = time_s;

@@ -1,4 +1,4 @@
-function tests = test_adaptive_confidence_thresholds
+function tests = test_02_adaptive_confidence_thresholds
 tests = functiontests(localfunctions);
 end
 

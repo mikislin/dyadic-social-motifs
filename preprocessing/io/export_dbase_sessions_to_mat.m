@@ -1,5 +1,8 @@
 function export_dbase_sessions_to_mat(dbase, outDir)
-%EXPORT_DBASE_SESSIONS_TO_MAT Export one MAT file per session for cluster preprocessing.
+%EXPORT_DBASE_SESSIONS_TO_MAT Export one MAT file per session.
+%
+% Legacy helper for older dbase-struct workflows. The paper pipeline uses
+% the top-level io/ manifest and load_session_raw helpers instead.
 
 if ~isfolder(outDir)
     mkdir(outDir);
@@ -24,7 +27,7 @@ for i = 1:numel(dbase)
         sessionRaw.excludedFrames = [];
     end
     if isfield(dbase, 'fileID')
-        sessionRaw.session_id = sprintf('session_%s', string(dbase(i).fileID));
+        sessionRaw.session_id = sprintf('session_%s', char(string(dbase(i).fileID)));
     else
         sessionRaw.session_id = sprintf('session_%04d', i);
     end

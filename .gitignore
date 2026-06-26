@@ -1,9 +1,11 @@
 # MATLAB autosaves
 *.asv
+.~lock.*#
 
 # Compiled files
 *.mex*
 *.mat
+*.md
 
 # OS files
 .DS_Store
@@ -12,6 +14,7 @@ Thumbs.db
 # Editor folders
 .vscode/
 .idea/
+config/paper_paths_local.m
 
 # Outputs (IMPORTANT)
 outputs/
@@ -19,11 +22,12 @@ results/
 figures/
 tmp/
 logs/
+derived/
 
 # Large data
 data/raw/
 data/processed/
 
-# Python leftovers if any
+# Python leftovers
 __pycache__/
 *.pyc

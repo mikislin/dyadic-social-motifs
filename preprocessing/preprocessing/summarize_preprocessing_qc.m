@@ -4,8 +4,28 @@ function stats = summarize_preprocessing_qc(sessionPreproc)
 badframes = sessionPreproc.qc.badframes;
 qcFrame = sessionPreproc.qc.frames;
 nAnimals = size(badframes,2);
+predictionIssueByAnimal = false(size(badframes));
+interpolatedIssueByAnimal = false(size(badframes));
+usableIssueByAnimal = false(size(badframes));
+repairedIssueByAnimal = false(size(badframes));
+unresolvedIssueByAnimal = false(size(badframes));
 stats = struct();
 for m = 1:nAnimals
+    predictionIssueFrame = qcFrame.fracLowConf(:,m) > 0 | ...
+        qcFrame.fracJump(:,m) > 0 | ...
+        qcFrame.fracGeom(:,m) > 0;
+    interpolatedIssueFrame = predictionIssueFrame & qcFrame.fracInterp(:,m) > 0;
+    finalNanFrame = qcFrame.fracFinalNaN(:,m) > 0;
+    usableIssueFrame = predictionIssueFrame & ~badframes(:,m) & ~finalNanFrame;
+    repairedIssueFrame = interpolatedIssueFrame & usableIssueFrame;
+    unresolvedIssueFrame = predictionIssueFrame & (badframes(:,m) | finalNanFrame);
+
+    predictionIssueByAnimal(:,m) = predictionIssueFrame;
+    interpolatedIssueByAnimal(:,m) = interpolatedIssueFrame;
+    usableIssueByAnimal(:,m) = usableIssueFrame;
+    repairedIssueByAnimal(:,m) = repairedIssueFrame;
+    unresolvedIssueByAnimal(:,m) = unresolvedIssueFrame;
+
     stats.animal(m).pctBadframes = 100 * mean(badframes(:,m));
     stats.animal(m).pctInterpFrames = 100 * mean(qcFrame.fracInterp(:,m) > 0);
     stats.animal(m).pctJumpFrames = 100 * mean(qcFrame.fracJump(:,m) > 0);
@@ -14,6 +34,15 @@ for m = 1:nAnimals
     stats.animal(m).pctLowConfFrames = 100 * mean(qcFrame.fracLowConf(:,m) > 0);
     stats.animal(m).pctJumpSamples = 100 * mean(qcFrame.fracJump(:,m));
     stats.animal(m).pctInterpSamples = 100 * mean(qcFrame.fracInterp(:,m));
+    stats.animal(m).nPredictionIssueFrames = nnz(predictionIssueFrame);
+    stats.animal(m).nInterpolatedPredictionIssueFrames = nnz(interpolatedIssueFrame);
+    stats.animal(m).nUsablePredictionIssueFrames = nnz(usableIssueFrame);
+    stats.animal(m).nRepairedPredictionIssueFrames = nnz(repairedIssueFrame);
+    stats.animal(m).nUnresolvedPredictionIssueFrames = nnz(unresolvedIssueFrame);
+    stats.animal(m).pctPredictionIssueFrames = 100 * mean(predictionIssueFrame);
+    stats.animal(m).pctPredictionIssueUsable = local_percent(nnz(usableIssueFrame), nnz(predictionIssueFrame));
+    stats.animal(m).pctPredictionIssueRepaired = local_percent(nnz(repairedIssueFrame), nnz(predictionIssueFrame));
+    stats.animal(m).pctPredictionIssueUnresolved = local_percent(nnz(unresolvedIssueFrame), nnz(predictionIssueFrame));
     stats.animal(m).medianBodyLength = median(qcFrame.bodyLength(isfinite(qcFrame.bodyLength(:,m)),m));
     stats.animal(m).medianBodyLengthRaw = NaN;
     stats.animal(m).medianDistortionAnchorDispRatio = NaN;
@@ -52,5 +81,39 @@ for m = 1:nAnimals
         vv = qcFrame.distortionAnchorDispRatio(:,m);
         stats.animal(m).medianDistortionAnchorDispRatio = median(vv(isfinite(vv)));
     end
+end
+
+stats.badframeFraction = mean(badframes(:));
+stats.nPredictionIssueAnimalFrames = nnz(predictionIssueByAnimal);
+stats.nInterpolatedPredictionIssueAnimalFrames = nnz(interpolatedIssueByAnimal);
+stats.nUsablePredictionIssueAnimalFrames = nnz(usableIssueByAnimal);
+stats.nRepairedPredictionIssueAnimalFrames = nnz(repairedIssueByAnimal);
+stats.nUnresolvedPredictionIssueAnimalFrames = nnz(unresolvedIssueByAnimal);
+stats.predictionIssueFraction = mean(predictionIssueByAnimal(:));
+stats.interpolatedPredictionIssueFraction = mean(interpolatedIssueByAnimal(:));
+stats.usablePredictionIssueFraction = mean(usableIssueByAnimal(:));
+stats.repairedPredictionIssueFraction = mean(repairedIssueByAnimal(:));
+stats.unresolvedPredictionIssueFraction = mean(unresolvedIssueByAnimal(:));
+stats.predictionIssueUsableRate = local_fraction(nnz(usableIssueByAnimal), nnz(predictionIssueByAnimal));
+stats.predictionIssueRepairRate = local_fraction(nnz(repairedIssueByAnimal), nnz(predictionIssueByAnimal));
+stats.predictionIssueUnresolvedRate = local_fraction(nnz(unresolvedIssueByAnimal), nnz(predictionIssueByAnimal));
+
+stats.nPredictionIssueFramesAnyAnimal = nnz(any(predictionIssueByAnimal, 2));
+stats.nRepairedPredictionIssueFramesAnyAnimal = nnz(any(repairedIssueByAnimal, 2));
+stats.nUnresolvedPredictionIssueFramesAnyAnimal = nnz(any(unresolvedIssueByAnimal, 2));
+stats.predictionIssueAnyAnimalFraction = mean(any(predictionIssueByAnimal, 2));
+stats.repairedPredictionIssueAnyAnimalFraction = mean(any(repairedIssueByAnimal, 2));
+stats.unresolvedPredictionIssueAnyAnimalFraction = mean(any(unresolvedIssueByAnimal, 2));
+end
+
+function p = local_percent(num, den)
+p = 100 * local_fraction(num, den);
+end
+
+function f = local_fraction(num, den)
+if den > 0
+    f = num ./ den;
+else
+    f = NaN;
 end
 end

@@ -4,6 +4,15 @@ function Report = validate_scale_usefulness_scores(ScaleScore, ChunkSet, varargi
 % Example
 %   Report = validate_scale_usefulness_scores(ScaleScore, 'makePlots', true);
 
+if nargin < 2 || (ischar(ChunkSet) || isstring(ChunkSet))
+    if nargin < 2
+        varargin = {};
+    else
+        varargin = [{ChunkSet}, varargin];
+    end
+    ChunkSet = [];
+end
+
 p = inputParser;
 p.addParameter('makePlots', true, @(x)islogical(x) || isnumeric(x));
 p.addParameter('verbose', true, @(x)islogical(x) || isnumeric(x));
@@ -22,11 +31,11 @@ for i = 1:numel(reqVars)
 end
 
 if any(diff(T.chunk_sec) <= 0)
-    issues(end+1,1) = "chunk_sec is not strictly increasing."; %#ok<AGROW>
+    issues(end+1,1) = "chunk_sec is not strictly increasing.";
 end
 
 if isempty(S)
-    issues(end+1,1) = "No operational scales were selected."; %#ok<AGROW>
+    issues(end+1,1) = "No operational scales were selected.";
 end
 
 Report = struct();
@@ -51,7 +60,7 @@ if P.verbose
     end
 end
 
-if P.makePlots
+if P.makePlots && ~isempty(ChunkSet)
     %plot_scale_usefulness_diagnostics(ScaleScore);
     plot_scale_usefulness_diagnostics(ScaleScore, ChunkSet)
 end

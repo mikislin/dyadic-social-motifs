@@ -1,4 +1,4 @@
-function tests = test_preprocess_session
+function tests = test_03_preprocess_session
 %TEST_PREPROCESS_SESSION MATLAB unit tests for dyadic preprocessing.
 tests = functiontests(localfunctions);
 end
@@ -14,8 +14,9 @@ function testDefaultParamsValidate(testCase)
 P = default_preprocessing_params();
 P = validate_preprocessing_params(P);
 verifyEqual(testCase, P.data.fps, 80);
-verifyEqual(testCase, P.confidence.threshold, 0.10, 'AbsTol', 1e-12);
-verifyEqual(testCase, P.jump.max_disp_mm_per_frame_by_node(10), 12);
+verifyEqual(testCase, P.confidence.threshold, 0.20, 'AbsTol', 1e-12);
+verifyEqual(testCase, P.jump.max_disp_mm_per_frame, 25);
+verifyEmpty(testCase, P.jump.max_disp_mm_per_frame_by_node);
 end
 
 function testSessionValidationAddsDefaults(testCase)
@@ -156,6 +157,39 @@ out = preprocess_session(session, P);
 verifyGreaterThan(testCase, out.qc.frames.fracLowConf(30,1), 0.5);
 end
 
+function testPredictionIssueRepairAuditCounts(testCase)
+sessionPreproc = struct();
+sessionPreproc.clean.tracks = zeros(5, 2, 2, 1);
+sessionPreproc.raw.SLEAPtracks = [];
+sessionPreproc.params.qc.arena_anchor_node = 1;
+sessionPreproc.params.qc.body_length_nodes = [1 2];
+
+qcFrame = struct();
+qcFrame.fracFinalNaN = [0; 0; 1; 0; 0];
+qcFrame.fracInterp = [1; 1; 1; 0; 0];
+qcFrame.fracJump = [0; 1; 0; 0; 0];
+qcFrame.fracGeom = zeros(5,1);
+qcFrame.fracArena = zeros(5,1);
+qcFrame.fracLowConf = [1; 0; 1; 0; 0];
+qcFrame.bodyLength = ones(5,1);
+qcFrame.distortionAnchorDispRatio = zeros(5,1);
+
+sessionPreproc.qc.frames = qcFrame;
+sessionPreproc.qc.badframes = [false; false; true; false; false];
+
+stats = summarize_preprocessing_qc(sessionPreproc);
+
+verifyEqual(testCase, stats.animal(1).nPredictionIssueFrames, 3);
+verifyEqual(testCase, stats.animal(1).nInterpolatedPredictionIssueFrames, 3);
+verifyEqual(testCase, stats.animal(1).nRepairedPredictionIssueFrames, 2);
+verifyEqual(testCase, stats.animal(1).nUnresolvedPredictionIssueFrames, 1);
+verifyEqual(testCase, stats.nPredictionIssueAnimalFrames, 3);
+verifyEqual(testCase, stats.nRepairedPredictionIssueAnimalFrames, 2);
+verifyEqual(testCase, stats.nUnresolvedPredictionIssueAnimalFrames, 1);
+verifyEqual(testCase, stats.predictionIssueRepairRate, 2/3, 'AbsTol', 1e-12);
+verifyEqual(testCase, stats.predictionIssueUnresolvedRate, 1/3, 'AbsTol', 1e-12);
+end
+
 function testDistortionAuditPlotRuns(testCase)
 P = default_preprocessing_params();
 P.smooth.enabled = false;
@@ -165,6 +199,65 @@ out = preprocess_session(session, P);
 fig = plot_preprocessing_qc(out);
 verifyTrue(testCase, isgraphics(fig));
 close(fig);
+end
+
+function testLegacyDbaseExportBatchAndReloadUseTempDirs(testCase)
+tmpIn = tempname;
+tmpOut = tempname;
+mkdir(tmpIn);
+mkdir(tmpOut);
+c = onCleanup(@() cleanupDirs(tmpIn, tmpOut));
+
+session = makeSyntheticSession(60, 13, 1, false, false, true);
+dbase = struct();
+dbase(1).raw_index = 1;
+dbase(1).fileID = "synthetic_session";
+dbase(1).SLEAPtracks = session.SLEAPtracks;
+dbase(1).SLEAPscores = session.SLEAPscores;
+dbase(1).time = session.time;
+dbase(1).excludedFrames = session.excludedFrames;
+
+export_dbase_sessions_to_mat(dbase, tmpIn);
+verifyTrue(testCase, isfile(fullfile(tmpIn, 'session_0001.mat')));
+
+P = default_preprocessing_params();
+P.smooth.enabled = false;
+P.output.return_raw = false;
+P.debug.enabled = false;
+run_preprocessing_batch(tmpIn, tmpOut, P);
+verifyTrue(testCase, isfile(fullfile(tmpOut, 'session_0001_preproc.mat')));
+
+dbaseOut = load_preprocessing_outputs_to_dbase(dbase, tmpOut);
+verifyTrue(testCase, isfield(dbaseOut, 'preprocessed_tracks'));
+verifyTrue(testCase, isfield(dbaseOut, 'preprocessing_badframes'));
+verifySize(testCase, dbaseOut.preprocessing_badframes, [60 1]);
+clear c
+end
+
+function testReviewPreprocessingOutputsUsesTempDir(testCase)
+tmpOut = tempname;
+tmpReview = tempname;
+mkdir(tmpOut);
+mkdir(tmpReview);
+c = onCleanup(@() cleanupDirs(tmpOut, tmpReview));
+
+P = default_preprocessing_params();
+P.smooth.enabled = false;
+P.output.return_raw = false;
+P.debug.enabled = false;
+session = makeSyntheticSession(80, 13, 1, true, false, true);
+out = preprocess_session(session, P);
+save(fullfile(tmpOut, 'session_0001_preproc.mat'), 'out');
+
+qc = review_preprocessing_outputs(tmpOut, tmpReview);
+verifyEqual(testCase, height(qc.summaryTable), 1);
+verifyEqual(testCase, height(qc.animalTable), 1);
+verifyTrue(testCase, ismember('nRepairedPredictionIssueFrames', ...
+    qc.animalTable.Properties.VariableNames));
+verifyTrue(testCase, ismember('pctPredictionIssueRepaired', ...
+    qc.animalTable.Properties.VariableNames));
+verifyTrue(testCase, isfile(fullfile(tmpReview, 'preprocessing_qc_session_summary.csv')));
+clear c
 end
 
 function session = makeSyntheticSession(T, nNodes, nAnimals, addShortGap, addTeleport, addScores)
@@ -209,5 +302,13 @@ if addScores
     session.SLEAPscores = ones(T, nNodes, nAnimals);
 else
     session.SLEAPscores = [];
+end
+end
+
+function cleanupDirs(varargin)
+for i = 1:numel(varargin)
+    if isfolder(varargin{i})
+        rmdir(varargin{i}, 's');
+    end
 end
 end

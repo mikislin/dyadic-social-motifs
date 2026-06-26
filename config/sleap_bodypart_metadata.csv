@@ -1,0 +1,14 @@
+node_index,bodypart_name,display_label,matlab_field,semantic_region,notes
+1,nose,Nose,nose,head,SLEAP node 1.
+2,neck,Neck,neck,axial,SLEAP node 2.
+3,Lear,L ear,leftEar,head,SLEAP node 3; left ear.
+4,Rear,R ear,rightEar,head,SLEAP node 4; right ear.
+5,LFpaw,LF paw,lfPaw,forelimb,SLEAP node 5; left forepaw.
+6,RFpaw,RF paw,rfPaw,forelimb,SLEAP node 6; right forepaw.
+7,LHpaw,LH paw,lhPaw,hindlimb,SLEAP node 7; left hindpaw.
+8,RHpaw,RH paw,rhPaw,hindlimb,SLEAP node 8; right hindpaw.
+9,body,Body,body,trunk,SLEAP node 9.
+10,tailBase,Tail base,tailBase,tail,SLEAP node 10.
+11,tailMid,Tail mid,tailMid,tail,SLEAP node 11.
+12,tailTip,Tail tip,tailTip,tail,SLEAP node 12.
+13,bodyMid,Body mid,midBody,trunk,SLEAP node 13.
