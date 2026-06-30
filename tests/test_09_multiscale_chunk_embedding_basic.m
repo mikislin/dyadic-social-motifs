@@ -1,4 +1,4 @@
-function tests = test_multiscale_chunk_embedding_basic
+function tests = test_09_multiscale_chunk_embedding_basic
 %TEST_MULTISCALE_CHUNK_EMBEDDING_BASIC Unit tests for chunk embedding layer.
 tests = functiontests(localfunctions);
 end

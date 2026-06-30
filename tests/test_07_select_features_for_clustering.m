@@ -1,4 +1,4 @@
-function tests = test_select_features_for_clustering
+function tests = test_07_select_features_for_clustering
 tests = functiontests(localfunctions);
 end
 

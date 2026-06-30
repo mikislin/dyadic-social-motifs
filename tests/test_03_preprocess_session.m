@@ -7,7 +7,7 @@ function setupOnce(~)
 rootDir = fileparts(fileparts(mfilename('fullpath')));
 addpath(fullfile(rootDir, 'preprocessing'));
 addpath(fullfile(rootDir, 'io'));
-addpath(fullfile(rootDir, 'cluster'));
+addpath(fullfile(rootDir, 'preprocessing', 'cluster'));
 end
 
 function testDefaultParamsValidate(testCase)

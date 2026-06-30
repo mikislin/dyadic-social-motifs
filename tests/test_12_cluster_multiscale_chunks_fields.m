@@ -1,4 +1,4 @@
-function tests = test_cluster_multiscale_chunks_fields
+function tests = test_12_cluster_multiscale_chunks_fields
 tests = functiontests(localfunctions);
 end
 

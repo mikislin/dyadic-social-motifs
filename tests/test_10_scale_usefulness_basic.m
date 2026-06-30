@@ -1,4 +1,4 @@
-function tests = test_scale_usefulness_basic()
+function tests = test_10_scale_usefulness_basic()
 %TEST_SCALE_USEFULNESS_BASIC Basic tests for scale-usefulness scoring.
 tests = functiontests(localfunctions);
 end

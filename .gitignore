@@ -23,6 +23,8 @@ figures/
 tmp/
 logs/
 derived/
+tools/tmp/
+tools/
 
 # Large data
 data/raw/

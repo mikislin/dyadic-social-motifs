@@ -92,7 +92,7 @@ end
 end
 
 function testPreprocessingConfigLoadsSleapBodypartMetadata(testCase)
-repoRoot = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+repoRoot = fileparts(fileparts(mfilename('fullpath')));
 cfg = load_preprocessing_pipeline_config( ...
     fullfile(repoRoot, 'config', 'preprocessing_pipeline_config.csv'));
 

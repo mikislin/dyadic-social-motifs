@@ -1,0 +1,6 @@
+step_id,script_path,enabled,default_audit_mode,smoke_safe,smoke_env,full_env,expected_outputs,description
+run_01,paper/run_01_manifest.m,1,full,0,,,data/session_manifest.csv,Build canonical session manifest from local raw-data metadata.
+run_02,paper/run_02_preprocess_smoke.m,1,smoke,1,,,derived/preprocess_smoke/preprocess_smoke_summary.csv,Small representative preprocessing smoke gate.
+run_03,paper/run_03_preprocess_all.m,1,full,0,,,derived/preprocessed/preprocess_all_summary.csv,Full preprocessing for paper-included sessions.
+run_04,paper/run_04_preprocess_qc_review.m,1,full,0,,,derived/preprocess_qc/preprocess_qc_session_table.csv,Preprocessing QC review and motif-discovery inclusion audit.
+run_05,paper/run_05_extract_motif_dyad_features.m,1,full,0,RUN05_FEATURE_RUN_MODE=smoke;RUN05_SKIP_EXISTING=true,RUN05_FEATURE_RUN_MODE=full,derived/features_motif_discovery/feature_extraction_session_audit.csv,Condition-blind dyadic feature extraction for motif discovery.

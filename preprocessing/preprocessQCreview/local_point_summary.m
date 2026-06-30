@@ -1,0 +1,13 @@
+function summary = local_point_summary(pointTable)
+if isempty(pointTable) || height(pointTable) == 0
+    summary = table();
+    return
+end
+metrics = {'fraction_low_confidence_samples','fraction_jump_samples', ...
+    'fraction_geometry_samples','fraction_interpolated_samples', ...
+    'fraction_final_nan_samples','fraction_prediction_issue_samples', ...
+    'fraction_repaired_prediction_issue_samples', ...
+    'fraction_unresolved_prediction_issue_samples'};
+summary = groupsummary(pointTable, {'node','node_label'}, {'mean','median','max'}, metrics);
+summary = sortrows(summary, 'node');
+end

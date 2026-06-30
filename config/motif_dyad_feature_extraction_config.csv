@@ -1,0 +1,17 @@
+parameter,value,type,env_override,description
+run_mode,full,string,RUN05_FEATURE_RUN_MODE,Feature extraction run mode: smoke or full.
+fps,80,number,RUN05_FPS,Expected acquisition frame rate in frames per second; feature extraction asserts preprocessed sessions match this value.
+pixel_size_mm,0.50761421319797,number,RUN05_PIXEL_SIZE_MM,Expected millimeters per pixel; equals 1/1.97 and feature extraction asserts preprocessed sessions match this value.
+unit_parameter_tolerance,1e-10,number,RUN05_UNIT_PARAMETER_TOLERANCE,Absolute tolerance for checking session fps and pixel size against this config.
+smoke_sessions_per_arena,3,number,RUN05_SMOKE_SESSIONS_PER_ARENA,Number of QC-pass dyad sessions selected per arena in smoke mode.
+max_sessions,NaN,number,RUN05_MAX_SESSIONS,Optional cap after smoke/full selection; NaN means no cap.
+skip_existing,false,logical,RUN05_SKIP_EXISTING,Whether to load existing successful per-session feature files.
+max_correlation_frames_per_arena,50000,number,RUN05_MAX_CORRELATION_FRAMES_PER_ARENA,Maximum row-aligned valid frames retained per arena for correlation diagnostics.
+distribution_density_bins,80,number,RUN05_DISTRIBUTION_DENSITY_BINS,Number of bins for continuous feature distribution diagnostics.
+circular_density_bins,72,number,RUN05_CIRCULAR_DENSITY_BINS,Number of bins for circular degree feature distribution diagnostics.
+contact_threshold_mm,20,number,RUN05_CONTACT_THRESHOLD_MM,Centroid/head/body proximity threshold in millimeters for contact-like boolean features.
+close_threshold_mm,40,number,RUN05_CLOSE_THRESHOLD_MM,Broader centroid proximity threshold in millimeters for close-pair state.
+smooth_span_frames,5,number,RUN05_SMOOTH_SPAN_FRAMES,Moving smoothing span in frames for continuous and circular frame-level features.
+selection_rule,qc_pass_motif_discovery & preprocess_success & effective_n_animals == 2,string,,Condition-blind motif-discovery dyad inclusion rule.
+smoke_selection_rule,"first clean and review-band QC-pass sessions by arena, ordered by raw_index; no condition labels used",string,,Condition-blind smoke session selection rule.
+distribution_example_features,all,string_list,RUN05_DISTRIBUTION_FEATURES,Feature names for distribution diagnostics; all means all canonical dyad features.

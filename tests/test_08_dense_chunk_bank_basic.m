@@ -1,4 +1,4 @@
-function tests = test_dense_chunk_bank_basic
+function tests = test_08_dense_chunk_bank_basic
 tests = functiontests(localfunctions);
 end
 

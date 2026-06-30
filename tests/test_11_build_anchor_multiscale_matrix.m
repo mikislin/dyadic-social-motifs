@@ -1,4 +1,4 @@
-function tests = test_build_anchor_multiscale_matrix
+function tests = test_11_build_anchor_multiscale_matrix
 tests = functiontests(localfunctions);
 end
 

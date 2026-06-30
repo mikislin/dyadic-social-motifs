@@ -1,4 +1,4 @@
-function tests = test_summarize_windows
+function tests = test_06_summarize_windows
 tests = functiontests(localfunctions);
 end
 

@@ -20,11 +20,16 @@ end
 
 labels = ["single-wt", "wt-wt", "m-wt", "m-m", "reduced-three-wt-wt"];
 rowIdx = nan(numel(labels),1);
-rowIdx(1) = local_first_row(M, M.effective_n_animals == 1 & M.condition == "WT");
-rowIdx(2) = local_first_row(M, M.effective_n_animals == 2 & M.condition == "WT_WT" & M.animal_qc_status == "ok");
-rowIdx(3) = local_first_row(M, M.effective_n_animals == 2 & M.condition == "M_WT");
-rowIdx(4) = local_first_row(M, M.effective_n_animals == 2 & M.condition == "M_M");
-rowIdx(5) = local_first_row(M, M.effective_n_animals == 2 & M.animal_qc_status == "reduce_to_dyad");
+rowIdx(1) = first_manifest_row(M, M.effective_n_animals == 1 & M.condition == "WT", ...
+    'run_02_preprocess_smoke:MissingSmokeCase', labels(1));
+rowIdx(2) = first_manifest_row(M, M.effective_n_animals == 2 & M.condition == "WT_WT" & M.animal_qc_status == "ok", ...
+    'run_02_preprocess_smoke:MissingSmokeCase', labels(2));
+rowIdx(3) = first_manifest_row(M, M.effective_n_animals == 2 & M.condition == "M_WT", ...
+    'run_02_preprocess_smoke:MissingSmokeCase', labels(3));
+rowIdx(4) = first_manifest_row(M, M.effective_n_animals == 2 & M.condition == "M_M", ...
+    'run_02_preprocess_smoke:MissingSmokeCase', labels(4));
+rowIdx(5) = first_manifest_row(M, M.effective_n_animals == 2 & M.animal_qc_status == "reduce_to_dyad", ...
+    'run_02_preprocess_smoke:MissingSmokeCase', labels(5));
 
 P = default_preprocessing_params();
 P.output.return_raw = false;
@@ -63,16 +68,10 @@ for i = 1:numel(rowIdx)
     else
         one.badframe_fraction = mean(sessionPreproc.qc.badframes(:));
     end
-    summary = [summary; one]; 
+    summary = [summary; one]; %#ok<AGROW>
 end
 
 summaryPath = fullfile(outDir, 'preprocess_smoke_summary.csv');
 writetable(summary, summaryPath);
 disp(summary);
 fprintf('Wrote smoke preprocessing summary: %s\n', summaryPath);
-
-function idx = local_first_row(M, mask)
-idx = find(mask, 1, 'first');
-assert(~isempty(idx), 'run_02_preprocess_smoke:MissingSmokeCase', ...
-    'Could not find a manifest row for requested smoke case.');
-end

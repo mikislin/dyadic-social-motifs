@@ -1,4 +1,4 @@
-function tests = test_compute_dyad_features
+function tests = test_05_compute_dyad_features
 tests = functiontests(localfunctions);
 end
 
@@ -19,7 +19,7 @@ tracks(:,9,:,2) = [ones(T,1)*45 zeros(T,1)];
 tracks(:,10,:,2) = [ones(T,1)*40 zeros(T,1)];
 tracks(:,13,:,2) = [ones(T,1)*43 zeros(T,1)];
 
-nodeMap = struct('nose',1,'body',9,'tailBase',10,'midBody',13);
+nodeMap = default_sleap_node_map();
 D = compute_dyad_features(tracks, 80, nodeMap);
 
 verifyEqual(testCase, size(D.X,1), T);
