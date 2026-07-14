@@ -352,11 +352,14 @@ end
 function [ScaleShard, statusText] = local_load_or_build_scale_summary_shard(repoRoot, sessionTable, ...
     selectedAnchors, scaleRow, stats, params, scoreFeatures, shardPath)
 statusText = "built";
+summaryProfile = local_summary_profile_for_scale(scaleRow, params);
 if params.reuse_scale_summary_shards && isfile(shardPath)
     S = load(shardPath, 'ScaleShard');
     if isfield(S, 'ScaleShard') && local_scale_summary_shard_compatible(S.ScaleShard, ...
-            selectedAnchors, scaleRow, params)
+            selectedAnchors, scaleRow, params, summaryProfile)
         ScaleShard = S.ScaleShard;
+        ScaleShard.summary_profile = summaryProfile.profile;
+        ScaleShard.summary_temporal_band = summaryProfile.temporal_band;
         statusText = "reused";
         return
     end
@@ -370,10 +373,12 @@ ScaleShard = build_scale_summary_shard_from_anchor_manifest(repoRoot, sessionTab
     'minValidFrac', params.min_chunk_valid_frac, ...
     'minFeatureFiniteFrac', params.min_chunk_feature_finite_frac, ...
     'featureNames', scoreFeatures, ...
-    'summaryTemporalBins', params.summary_temporal_bins, ...
-    'summaryDctCoeffs', params.summary_dct_coeffs, ...
+    'summaryTemporalBins', summaryProfile.temporal_bins, ...
+    'summaryDctCoeffs', summaryProfile.dct_coeffs, ...
     'summaryIncludeDct', params.summary_include_dct, ...
     'summaryUseScaledFeatures', params.summary_use_scaled_features);
+ScaleShard.summary_profile = summaryProfile.profile;
+ScaleShard.summary_temporal_band = summaryProfile.temporal_band;
 
 tmpPath = string(shardPath) + ".tmp";
 if isfile(tmpPath)
@@ -383,7 +388,7 @@ save(tmpPath, 'ScaleShard', '-v7.3');
 movefile(tmpPath, shardPath, 'f');
 end
 
-function tf = local_scale_summary_shard_compatible(ScaleShard, selectedAnchors, scaleRow, params)
+function tf = local_scale_summary_shard_compatible(ScaleShard, selectedAnchors, scaleRow, params, summaryProfile)
 tf = isstruct(ScaleShard) && isfield(ScaleShard, 'shard_version') && ...
     string(ScaleShard.shard_version) == "run06_scale_summary_shard_v1" && ...
     isfield(ScaleShard, 'scale') && isfield(ScaleShard.scale, 'Xsummary') && ...
@@ -394,10 +399,12 @@ end
 tf = tf && ScaleShard.n_anchor_rows == height(selectedAnchors);
 tf = tf && abs(double(ScaleShard.chunk_sec) - double(scaleRow.chunk_sec(1))) <= 1e-10;
 tf = tf && ScaleShard.chunk_frames == max(1, round(double(scaleRow.chunk_sec(1)) * params.fps));
-tf = tf && ScaleShard.summary_temporal_bins == params.summary_temporal_bins;
-tf = tf && ScaleShard.summary_dct_coeffs == params.summary_dct_coeffs;
+tf = tf && ScaleShard.summary_temporal_bins == summaryProfile.temporal_bins;
+tf = tf && ScaleShard.summary_dct_coeffs == summaryProfile.dct_coeffs;
 tf = tf && logical(ScaleShard.summary_include_dct) == logical(params.summary_include_dct);
 tf = tf && logical(ScaleShard.summary_use_scaled_features) == logical(params.summary_use_scaled_features);
+tf = tf && (~isfield(ScaleShard, 'summary_profile') || ...
+    string(ScaleShard.summary_profile) == summaryProfile.profile);
 tf = tf && height(ScaleShard.scale.meta) == height(selectedAnchors);
 tf = tf && size(ScaleShard.scale.Xsummary, 1) == height(selectedAnchors);
 end
@@ -410,6 +417,10 @@ row.chunk_frames = double(ScaleShard.chunk_frames);
 row.n_anchor_rows = double(ScaleShard.n_anchor_rows);
 row.n_valid_chunks = nnz(ScaleShard.scale.meta.chunk_is_valid);
 row.n_summary_dims = size(ScaleShard.scale.Xsummary, 2);
+row.summary_profile = local_struct_string_field(ScaleShard, 'summary_profile', "legacy_global");
+row.summary_temporal_band = local_struct_string_field(ScaleShard, 'summary_temporal_band', "");
+row.summary_temporal_bins = double(ScaleShard.summary_temporal_bins);
+row.summary_dct_coeffs = double(ScaleShard.summary_dct_coeffs);
 row.summary_storage_class = string(class(ScaleShard.scale.Xsummary));
 row.shard_status = string(statusText);
 row.shard_file = string(shardPath);
@@ -951,6 +962,13 @@ T.cum_scoring_pcs_explained = nan(height(T), 1);
 T.initial_band(tf) = scaleScores.initial_band(loc(tf));
 T.n_pcs_target_pct_from_scale_scores(tf) = scaleScores.n_pcs_target_pct(loc(tf));
 T.cum_scoring_pcs_explained(tf) = scaleScores.cum_embedding_pcs_explained(loc(tf));
+T.summary_profile = strings(height(T), 1);
+for i = 1:height(T)
+    oneScale = table();
+    oneScale.chunk_sec = T.chunk_sec(i);
+    prof = local_summary_profile_for_scale(oneScale, params);
+    T.summary_profile(i) = prof.profile;
+end
 
 minPcs = nan(height(T), 1);
 maxPcs = nan(height(T), 1);
@@ -1250,6 +1268,41 @@ elseif sec < params.scale_band_motif_max_sec
     label = "motif";
 else
     label = "context";
+end
+end
+
+function profile = local_summary_profile_for_scale(scaleRow, params)
+sec = double(scaleRow.chunk_sec(1));
+band = local_scale_band_label(sec, params);
+profile = struct();
+profile.temporal_band = band;
+if isfield(params, 'summary_band_adaptive') && logical(params.summary_band_adaptive)
+    switch band
+        case "micro"
+            profile.temporal_bins = params.summary_micro_temporal_bins;
+            profile.dct_coeffs = params.summary_micro_dct_coeffs;
+        case "motif"
+            profile.temporal_bins = params.summary_motif_temporal_bins;
+            profile.dct_coeffs = params.summary_motif_dct_coeffs;
+        otherwise
+            profile.temporal_bins = params.summary_context_temporal_bins;
+            profile.dct_coeffs = params.summary_context_dct_coeffs;
+    end
+    profile.profile = band + "_adaptive_bins" + string(profile.temporal_bins) + ...
+        "_dct" + string(profile.dct_coeffs);
+else
+    profile.temporal_bins = params.summary_temporal_bins;
+    profile.dct_coeffs = params.summary_dct_coeffs;
+    profile.profile = "global_bins" + string(profile.temporal_bins) + ...
+        "_dct" + string(profile.dct_coeffs);
+end
+end
+
+function value = local_struct_string_field(S, fieldName, defaultValue)
+if isfield(S, fieldName)
+    value = string(S.(fieldName));
+else
+    value = string(defaultValue);
 end
 end
 

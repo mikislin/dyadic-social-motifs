@@ -41,6 +41,45 @@ verifyGreaterThan(testCase, params.event_turn_threshold_deg, 0);
 verifyGreaterThanOrEqual(testCase, params.arena_sensitivity_n_embedding_pcs, 1);
 end
 
+function testRun06BandAdaptiveSummaryDefaults(testCase)
+repoRoot = fileparts(fileparts(mfilename('fullpath')));
+params = load_multiscale_chunking_config(fullfile(repoRoot, 'config', 'multiscale_chunking_config.csv'));
+
+verifyTrue(testCase, logical(params.summary_band_adaptive));
+verifyEqual(testCase, params.summary_micro_temporal_bins, 6);
+verifyEqual(testCase, params.summary_micro_dct_coeffs, 4);
+verifyEqual(testCase, params.summary_motif_temporal_bins, 12);
+verifyEqual(testCase, params.summary_motif_dct_coeffs, 8);
+verifyEqual(testCase, params.summary_context_temporal_bins, 6);
+verifyEqual(testCase, params.summary_context_dct_coeffs, 4);
+verifyGreaterThan(testCase, params.summary_motif_temporal_bins, params.summary_micro_temporal_bins);
+verifyGreaterThan(testCase, params.summary_motif_dct_coeffs, params.summary_micro_dct_coeffs);
+end
+
+function testRun06SmokeComparisonArtifactsIfPresent(testCase)
+repoRoot = fileparts(fileparts(mfilename('fullpath')));
+baseRoot = fullfile(repoRoot, 'derived', 'run06_smoke_experiments', 'baseline_bins6_dct4');
+motifRoot = fullfile(repoRoot, 'derived', 'run06_smoke_experiments', 'rich_bins12_dct8');
+basePath = fullfile(baseRoot, 'embedding_dimension_audit.csv');
+motifPath = fullfile(motifRoot, 'embedding_dimension_audit.csv');
+
+if ~(isfile(basePath) && isfile(motifPath))
+    runnerText = string(fileread(fullfile(repoRoot, 'chunks', 'run_multiscale_chunking_and_scale_selection.m')));
+    verifyTrue(testCase, contains(runnerText, 'summary_motif_temporal_bins'));
+    verifyTrue(testCase, contains(runnerText, 'summary_motif_dct_coeffs'));
+    return
+end
+
+Base = readtable(basePath, 'TextType', 'string');
+Motif = readtable(motifPath, 'TextType', 'string');
+Base = Base(string(Base.initial_band) == "motif", :);
+Motif = Motif(string(Motif.initial_band) == "motif", :);
+verifyFalse(testCase, isempty(Base));
+verifyFalse(testCase, isempty(Motif));
+verifyGreaterThan(testCase, median(Motif.n_summary_dims), median(Base.n_summary_dims));
+verifyGreaterThan(testCase, median(Motif.effective_dim, 'omitnan'), median(Base.effective_dim, 'omitnan'));
+end
+
 function testRun06FullEnvRoutesToProductionRoot(testCase)
 repoRoot = fileparts(fileparts(mfilename('fullpath')));
 oldMode = getenv('RUN06_CHUNK_RUN_MODE');
@@ -129,6 +168,8 @@ verifyTrue(testCase, contains(runnerText, "scale_session_anchor_coverage_audit.c
 verifyTrue(testCase, contains(runnerText, "scale_anchor_coverage_audit.csv"));
 verifyTrue(testCase, contains(runnerText, "scale_summary_shard_manifest.csv"));
 verifyTrue(testCase, contains(runnerText, "build_scale_summary_shard_from_anchor_manifest"));
+verifyTrue(testCase, contains(runnerText, "local_summary_profile_for_scale"));
+verifyTrue(testCase, contains(runnerText, "summary_profile"));
 verifyTrue(testCase, contains(runnerText, "local_drop_summary_matrices"));
 verifyFalse(testCase, contains(runnerText, "[ChunkSet, anchorManifest] = build_chunkset_from_anchor_manifest"));
 verifyTrue(testCase, contains(runnerText, "embedding_dimension_audit.csv"));
@@ -146,6 +187,7 @@ verifyTrue(testCase, contains(figureText, "scale_specific_anchor_coverage_audit"
 verifyTrue(testCase, contains(figureText, "embedding_dimension_audit"));
 verifyTrue(testCase, contains(figureText, "scale_selection_stability"));
 verifyTrue(testCase, contains(figureText, "primary_operational_scale_decision"));
+verifyTrue(testCase, contains(figureText, "motif_band_dimension_stability_audit"));
 verifyTrue(testCase, contains(figureText, "pca_loading_stability"));
 verifyTrue(testCase, contains(figureText, "primary_chunk_event_summary_audit"));
 verifyTrue(testCase, contains(figureText, "arena_embedding_sensitivity_audit_only"));

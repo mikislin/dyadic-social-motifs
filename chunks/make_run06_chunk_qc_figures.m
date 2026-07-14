@@ -29,6 +29,10 @@ rows = local_add_figure(rows, local_plot_scale_selection(outRoot, style), ...
 rows = local_add_figure(rows, local_plot_primary_scale_decision(outRoot, style), ...
     fullfile(outRoot, 'primary_operational_scales.csv'), ...
     "primary operational scales after stability and dimensionality guards");
+rows = local_add_figure(rows, local_plot_motif_band_dimension_stability(outRoot, style), ...
+    string(fullfile(outRoot, 'selected_operational_scales.csv')) + "; " + ...
+    string(fullfile(outRoot, 'embedding_dimension_audit.csv')), ...
+    "motif-band PC1 PC2 effective dimension stability and primary status audit");
 rows = local_add_figure(rows, local_plot_embedding_dimension_audit(outRoot, style), ...
     fullfile(outRoot, 'embedding_dimension_audit.csv'), ...
     "multiresolution representation compression and PCA dimensionality audit");
@@ -339,6 +343,114 @@ legend({'Score-selected','Primary scale','Guard threshold'}, ...
 local_format_axis(gca, style);
 
 files = local_export(fig, fullfile(outRoot, 'figures'), 'primary_operational_scale_decision', style);
+close(fig);
+end
+
+function files = local_plot_motif_band_dimension_stability(outRoot, style)
+path = fullfile(outRoot, 'selected_operational_scales.csv');
+if ~isfile(path)
+    files = strings(0, 1);
+    return
+end
+T = readtable(path, 'TextType', 'string');
+if isempty(T) || ~ismember('initial_band', T.Properties.VariableNames)
+    files = strings(0, 1);
+    return
+end
+M = T(string(T.initial_band) == "motif", :);
+if isempty(M)
+    files = strings(0, 1);
+    return
+end
+M = sortrows(M, 'chunk_sec');
+pc2 = nan(height(M), 1);
+if ismember('pc2_explained', M.Properties.VariableNames)
+    pc2 = M.pc2_explained;
+end
+primaryStatus = false(height(M), 1);
+if ismember('stable_and_dimension_supported', M.Properties.VariableNames)
+    primaryStatus = logical(M.stable_and_dimension_supported);
+end
+stability = nan(height(M), 1);
+if ismember('bootstrap_selection_frequency', M.Properties.VariableNames)
+    stability = M.bootstrap_selection_frequency;
+end
+rankWithin = nan(height(M), 1);
+if ismember('rank_within_role', M.Properties.VariableNames)
+    rankWithin = M.rank_within_role;
+end
+
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 1450 900]);
+tiledlayout(fig, 2, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+nexttile;
+hold on;
+plot(M.chunk_sec, M.pc1_explained, 'o-', 'Color', style.blue, 'LineWidth', 1.6);
+plot(M.chunk_sec, pc2, 's-', 'Color', style.gold, 'LineWidth', 1.6);
+scatter(M.chunk_sec(primaryStatus), M.pc1_explained(primaryStatus), 80, ...
+    style.green, 'filled', 'MarkerEdgeColor', 'k');
+hold off;
+set(gca, 'XScale', 'log');
+xlabel('Motif-band scale (s)', 'Interpreter', 'none');
+ylabel('Variance explained (%)', 'Interpreter', 'none');
+title('Motif PCA concentration', 'Interpreter', 'none');
+legend({'PC1', 'PC2', 'Primary scale'}, 'Location', 'best', 'Box', 'off');
+local_format_axis(gca, style);
+
+nexttile;
+plot(M.chunk_sec, M.effective_dim, 'o-', 'Color', style.purple, 'LineWidth', 1.7);
+hold on;
+if ismember('dimension_guard_min_effective_dim', M.Properties.VariableNames)
+    yline(M.dimension_guard_min_effective_dim(1), 'k--', 'LineWidth', 1.1);
+end
+scatter(M.chunk_sec(primaryStatus), M.effective_dim(primaryStatus), 80, ...
+    style.green, 'filled', 'MarkerEdgeColor', 'k');
+hold off;
+set(gca, 'XScale', 'log');
+xlabel('Motif-band scale (s)', 'Interpreter', 'none');
+ylabel('Effective PCA dimension', 'Interpreter', 'none');
+title('Motif dimensional support', 'Interpreter', 'none');
+legend({'Effective dimension', 'Dimension guard', 'Primary scale'}, ...
+    'Location', 'best', 'Box', 'off');
+local_format_axis(gca, style);
+
+nexttile;
+plot(M.chunk_sec, stability, 'o-', 'Color', style.green, 'LineWidth', 1.7);
+hold on;
+if ismember('stability_selection_frequency_threshold', M.Properties.VariableNames)
+    yline(M.stability_selection_frequency_threshold(1), 'k--', 'LineWidth', 1.1);
+elseif ismember('passes_stability_threshold', M.Properties.VariableNames)
+    yline(0.7, 'k--', 'LineWidth', 1.1);
+end
+scatter(M.chunk_sec(primaryStatus), stability(primaryStatus), 80, ...
+    style.green, 'filled', 'MarkerEdgeColor', 'k');
+hold off;
+set(gca, 'XScale', 'log');
+ylim([0 1.05]);
+xlabel('Motif-band scale (s)', 'Interpreter', 'none');
+ylabel('Bootstrap selection frequency', 'Interpreter', 'none');
+title('Motif selection stability', 'Interpreter', 'none');
+legend({'Selection frequency', 'Stability threshold', 'Primary scale'}, ...
+    'Location', 'best', 'Box', 'off');
+local_format_axis(gca, style);
+
+nexttile;
+bar(M.chunk_sec, double(primaryStatus), 0.6, 'FaceColor', style.gray, 'EdgeColor', 'none');
+hold on;
+scatter(M.chunk_sec, double(primaryStatus), 70, rankWithin, 'filled', 'MarkerEdgeColor', 'k');
+hold off;
+set(gca, 'XScale', 'log');
+ylim([-0.05 1.2]);
+yticks([0 1]);
+yticklabels({'survey only','primary'});
+xlabel('Motif-band scale (s)', 'Interpreter', 'none');
+ylabel('Primary status', 'Interpreter', 'none');
+title('Motif primary-promotion status', 'Interpreter', 'none');
+cb = colorbar;
+cb.Label.String = 'Rank within motif role';
+local_format_axis(gca, style);
+
+files = local_export(fig, fullfile(outRoot, 'figures'), 'motif_band_dimension_stability_audit', style);
 close(fig);
 end
 

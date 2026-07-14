@@ -34,8 +34,15 @@ score_variance_target_pct,90,number,RUN06_SCORE_VARIANCE_TARGET_PCT,Variance tar
 score_n_clusters,8,number,RUN06_SCORE_N_CLUSTERS,Provisional k-means clusters used only for condition-blind scale usefulness metrics.
 score_max_chunks_per_scale,4000,number,RUN06_SCORE_MAX_CHUNKS_PER_SCALE,Maximum chunks per scale sampled by scale scoring internals.
 score_representation_mode,multiresolution,string,RUN06_SCORE_REPRESENTATION_MODE,Scale scoring representation: multiresolution summaries or legacy flattened chunks.
-summary_temporal_bins,6,number,RUN06_SUMMARY_TEMPORAL_BINS,Number of equal temporal bins per channel in multiresolution chunk summaries.
-summary_dct_coeffs,4,number,RUN06_SUMMARY_DCT_COEFFS,Number of low-frequency DCT coefficients per channel in multiresolution chunk summaries.
+summary_band_adaptive,true,logical,RUN06_SUMMARY_BAND_ADAPTIVE,Use predefined temporal-band-specific multiresolution summary parameters.
+summary_temporal_bins,6,number,RUN06_SUMMARY_TEMPORAL_BINS,Fallback number of equal temporal bins per channel when band-adaptive summaries are disabled.
+summary_dct_coeffs,4,number,RUN06_SUMMARY_DCT_COEFFS,Fallback number of low-frequency DCT coefficients per channel when band-adaptive summaries are disabled.
+summary_micro_temporal_bins,6,number,RUN06_SUMMARY_MICRO_TEMPORAL_BINS,Number of equal temporal bins per channel for micro-scale multiresolution summaries.
+summary_micro_dct_coeffs,4,number,RUN06_SUMMARY_MICRO_DCT_COEFFS,Number of low-frequency DCT coefficients per channel for micro-scale multiresolution summaries.
+summary_motif_temporal_bins,12,number,RUN06_SUMMARY_MOTIF_TEMPORAL_BINS,Number of equal temporal bins per channel for motif-scale multiresolution summaries.
+summary_motif_dct_coeffs,8,number,RUN06_SUMMARY_MOTIF_DCT_COEFFS,Number of low-frequency DCT coefficients per channel for motif-scale multiresolution summaries.
+summary_context_temporal_bins,6,number,RUN06_SUMMARY_CONTEXT_TEMPORAL_BINS,Number of equal temporal bins per channel for context-scale multiresolution summaries.
+summary_context_dct_coeffs,4,number,RUN06_SUMMARY_CONTEXT_DCT_COEFFS,Number of low-frequency DCT coefficients per channel for context-scale multiresolution summaries.
 summary_include_dct,true,logical,RUN06_SUMMARY_INCLUDE_DCT,Include low-frequency DCT coefficients in multiresolution chunk summaries.
 summary_use_scaled_features,true,logical,RUN06_SUMMARY_USE_SCALED_FEATURES,Use condition-blind scaled feature channels when building multiresolution summaries.
 stability_bootstraps,40,number,RUN06_STABILITY_BOOTSTRAPS,Full-mode condition-blind session-block bootstrap replicates for scale-selection stability.

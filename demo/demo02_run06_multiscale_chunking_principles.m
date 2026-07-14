@@ -18,20 +18,30 @@ fps = 80;
 durationSec = 240;
 nFrames = durationSec * fps;
 t = (0:nFrames-1)' ./ fps;
-scaleSec = [0.2 0.5 1 2 5 10 20 30]';
+primaryMicroSec = [0.2215 0.3011 0.4092 0.5561 0.7557]';
+primaryMotifSec = [0.9272 1.2601 1.7125 2.3274]';
+primaryContextSec = [2.5780 4.2986 5.8420 7.9395]';
+surveyOnlyContextSec = [10.7900 17.9917 24.4513 30.0000]';
+scaleSec = [primaryMicroSec; primaryMotifSec; primaryContextSec; surveyOnlyContextSec];
 strideSec = 0.25;
 strideFrames = round(strideSec * fps);
 minValidFrac = 0.85;
 minFeatureFiniteFrac = 0.95;
-maxPcaChunks = 260;
-summaryTemporalBins = 6;
-summaryDctCoeffs = 4;
+maxPcaChunks = 180;
+summaryMicroTemporalBins = 6;
+summaryMicroDctCoeffs = 4;
+summaryMotifTemporalBins = 12;
+summaryMotifDctCoeffs = 8;
+summaryContextTemporalBins = 6;
+summaryContextDctCoeffs = 4;
 scorePcsRetained = 12;
+embeddingDimMicroMaxPcs = 24;
+embeddingDimMotifMaxPcs = 48;
 embeddingDimContextMaxPcs = 64;
 dimensionGuardMinEffectiveDim = 2;
 dimensionGuardMaxPc1Pct = 80;
 fixedFivePcVarianceTargetPct = 80;
-exampleScaleSec = [0.2 1 5 30]';
+exampleScaleSec = [0.2215 1.2601 5.8420 24.4513]';
 
 featureNames = [
     "centroid_dist"
@@ -305,12 +315,40 @@ for s = 1:numel(scaleSec)
     elseif scaleSec(s) < 2.5
         band = "motif";
     end
+    if band == "micro"
+        summaryTemporalBins = summaryMicroTemporalBins;
+        summaryDctCoeffs = summaryMicroDctCoeffs;
+        recommendedPcCap = embeddingDimMicroMaxPcs;
+    elseif band == "motif"
+        summaryTemporalBins = summaryMotifTemporalBins;
+        summaryDctCoeffs = summaryMotifDctCoeffs;
+        recommendedPcCap = embeddingDimMotifMaxPcs;
+    else
+        summaryTemporalBins = summaryContextTemporalBins;
+        summaryDctCoeffs = summaryContextDctCoeffs;
+        recommendedPcCap = embeddingDimContextMaxPcs;
+    end
+    summaryProfile = sprintf('%s_adaptive_bins%d_dct%d', band, summaryTemporalBins, summaryDctCoeffs);
+    productionPrimaryStatus = ismember(scaleSec(s), [primaryMicroSec; primaryMotifSec; primaryContextSec]);
+    productionScoreSelectedStatus = productionPrimaryStatus || ismember(scaleSec(s), surveyOnlyContextSec(1:3));
+    primaryExclusionReason = "primary";
+    if productionScoreSelectedStatus && ~productionPrimaryStatus
+        primaryExclusionReason = "score_selected_but_rejected_by_dimension_or_stability_guard";
+    elseif ~productionScoreSelectedStatus
+        primaryExclusionReason = "survey_only_not_score_selected";
+    end
 
     one = table();
     one.scale_index = s;
     one.chunk_sec = scaleSec(s);
     one.chunk_frames = chunkFrames;
     one.temporal_band = band;
+    one.summary_profile = string(summaryProfile);
+    one.summary_temporal_bins = summaryTemporalBins;
+    one.summary_dct_coeffs = summaryDctCoeffs;
+    one.production_score_selected_scale_analog = productionScoreSelectedStatus;
+    one.production_primary_scale_analog = productionPrimaryStatus;
+    one.primary_exclusion_reason_analog = primaryExclusionReason;
     one.n_stride_candidates = numel(candidateFrames);
     one.n_scale_specific_candidate_anchors = numel(anchors);
     one.n_candidates_removed_by_frame_mask = nnz(~keep);
@@ -409,6 +447,7 @@ for s = 1:numel(scaleSec)
     prow.raw_flattened_dimensions = chunkFrames * nFeature;
     prow.summary_dimensions = size(Xsummary, 2);
     prow.compression_ratio_raw_to_summary = prow.raw_flattened_dimensions ./ max(prow.summary_dimensions, 1);
+    prow.summary_profile = string(summaryProfile);
     prow.summary_temporal_bins = summaryTemporalBins;
     prow.summary_dct_coeffs = summaryDctCoeffs;
     prow.cum5_explained = sum(explained(1:min(5,numel(explained))));
@@ -418,13 +457,17 @@ for s = 1:numel(scaleSec)
     prow.n_pcs_95pct = n95;
     prow.effective_dim = 1 ./ max(sum(eigFrac.^2), eps);
     prow.score_pcs_retained = scorePcsRetained;
-    prow.recommended_pcs_for_next_embedding = min(max(n90, scorePcsRetained), embeddingDimContextMaxPcs);
-    prow.recommendation_reaches_90pct = n90 <= embeddingDimContextMaxPcs;
+    prow.recommended_max_pcs_by_temporal_role = recommendedPcCap;
+    prow.recommended_pcs_for_next_embedding = min(max(n90, scorePcsRetained), recommendedPcCap);
+    prow.recommendation_reaches_90pct = n90 <= recommendedPcCap;
     prow.dimension_guard_min_effective_dim = dimensionGuardMinEffectiveDim;
     prow.dimension_guard_max_pc1_explained_pct = dimensionGuardMaxPc1Pct;
     prow.dominant_pc_warning = pc1 > dimensionGuardMaxPc1Pct | prow.effective_dim < dimensionGuardMinEffectiveDim;
     prow.passes_dimension_guard = ~prow.dominant_pc_warning;
     prow.representation_mode = "multiresolution";
+    prow.production_score_selected_scale_analog = productionScoreSelectedStatus;
+    prow.production_primary_scale_analog = productionPrimaryStatus;
+    prow.primary_exclusion_reason_analog = primaryExclusionReason;
     prow.labels_used_for_pca = "none";
     prow.fixed_five_pc_variance_target_pct = fixedFivePcVarianceTargetPct;
     prow.fixed_five_pc_is_sufficient = prow.cum5_explained >= fixedFivePcVarianceTargetPct;
@@ -483,15 +526,15 @@ end
 
 selectedDemoScales = table();
 selectedDemoScales.scale_sec = exampleScaleSec;
-selectedDemoScales.role = ["micro"; "motif"; "context_short"; "context_long"];
+selectedDemoScales.role = ["primary_micro"; "primary_motif"; "primary_context"; "score_selected_long_context_rejected"];
 selectedDemoScales.what_it_can_capture = [
     "instantaneous posture and contact onset"
     "approach/contact/withdraw fragments"
     "short social episodes and local persistence"
-    "interaction context across multiple motif transitions"
+    "slow context across many transitions, useful to audit but not automatically primary"
     ];
 selectedDemoScales.condition_blind_selection_note = repmat( ...
-    "selected here for explanation only; real run_06 uses quantitative condition-blind scores", ...
+    "selected here for explanation only; production run_06 uses condition-blind score, stability, and dimensionality audits", ...
     height(selectedDemoScales), 1);
 
 demoDecisionRows = pcaRows;
@@ -501,19 +544,34 @@ demoDecisionRows.common_anchor_retention_fraction = anchorRows.common_anchor_ret
 demoDecisionRows.n_candidates_removed_by_frame_mask = anchorRows.n_candidates_removed_by_frame_mask;
 demoDecisionRows.demonstration_selected_scale = ismember(demoDecisionRows.chunk_sec, exampleScaleSec);
 demoDecisionRows.selection_rule_for_demo_only = repmat( ...
-    "one illustrative micro, motif, short-context, and long-context scale; production run_06 uses score and stability audits", ...
+    "one illustrative primary micro, primary motif, primary context, and rejected long-context scale; production run_06 uses score, stability, and dimensionality audits", ...
     height(demoDecisionRows), 1);
 demoDecisionRows.labels_used_for_demo_decision = repmat("none", height(demoDecisionRows), 1);
+demoDecisionRows.production_like_selection_story = strings(height(demoDecisionRows), 1);
 demoDecisionRows.demo_decision_rationale = strings(height(demoDecisionRows), 1);
 for i = 1:height(demoDecisionRows)
-    if demoDecisionRows.demonstration_selected_scale(i)
+    if demoDecisionRows.production_primary_scale_analog(i)
+        demoDecisionRows.production_like_selection_story(i) = ...
+            "primary scale analog: score-selected and promoted after stability/dimensionality guards";
+    elseif demoDecisionRows.production_score_selected_scale_analog(i)
+        demoDecisionRows.production_like_selection_story(i) = ...
+            "score-selected analog: retained for audit but not promoted to primary";
+    else
+        demoDecisionRows.production_like_selection_story(i) = ...
+            "survey-only analog: evaluated but not score-selected";
+    end
+
+    if demoDecisionRows.demonstration_selected_scale(i) && demoDecisionRows.production_primary_scale_analog(i)
         if demoDecisionRows.passes_dimension_guard(i)
             demoDecisionRows.demo_decision_rationale(i) = ...
-                "illustrative selected scale with non-dominant compact PCA representation";
+                "illustrative primary scale with non-dominant compact PCA representation";
         else
             demoDecisionRows.demo_decision_rationale(i) = ...
-                "illustrative selected scale retained to show why dimension guards must be audited";
+                "illustrative primary-like scale would need a guard audit before promotion";
         end
+    elseif demoDecisionRows.demonstration_selected_scale(i) && demoDecisionRows.production_score_selected_scale_analog(i)
+        demoDecisionRows.demo_decision_rationale(i) = ...
+            "illustrative long-context scale shows why score-selected candidates still need primary-promotion guards";
     elseif ~demoDecisionRows.fixed_five_pc_is_sufficient(i)
         demoDecisionRows.demo_decision_rationale(i) = ...
             "survey scale shows fixed five PCs would underrepresent compact-summary variance";
@@ -650,9 +708,9 @@ principleMap.demo_stage = [
     "2 valid-frame transform fit"
     "3 scale-specific anchor eligibility"
     "4 common-anchor cross-scale audit"
-    "5 multiresolution chunk summaries"
+    "5 band-adaptive multiresolution summaries"
     "6 PCA dimensionality audit"
-    "7 primary scale interpretation"
+    "7 score-selected to primary-scale promotion"
     "8 event-summary audit before embedding"
     ];
 principleMap.production_run06_analog = [
@@ -660,7 +718,7 @@ principleMap.production_run06_analog = [
     "chunk_feature_transform_audit.csv"
     "chunk_anchor_manifest.csv and scale_anchor_coverage_audit.csv"
     "scale usefulness scores from aligned common anchors"
-    "summarize_multiresolution_chunks and embedding_dimension_audit.csv"
+    "band-adaptive summarize_multiresolution_chunks and embedding_dimension_audit.csv"
     "scale_usefulness_scores.csv, pca_loading_stability.csv, selected_operational_scales.csv"
     "primary_operational_scales.csv and primary_scale_specific_anchor_manifest.csv"
     "primary_chunk_event_summary_audit.csv"
@@ -680,9 +738,9 @@ principleMap.reviewer_question_answered = [
     "Were transforms fit without condition labels and only on valid frames?"
     "Do frame masks and finite features control anchor eligibility?"
     "How are cross-scale scores compared without changing anchor identity?"
-    "Why are long windows not flattened frame by frame?"
+    "Why does motif time get richer summaries than micro/context time?"
     "Why is a fixed five-PC representation insufficient?"
-    "Which scales are carried forward and which remain survey-only?"
+    "How do 16 score-selected scales become 13 primary scales?"
     "What social-event detail remains visible before embedding?"
     ];
 principleMap.demo_source_csv = [
@@ -696,9 +754,27 @@ principleMap.demo_source_csv = [
     "demo_event_summary_by_scale.csv"
     ];
 
+summaryProfileRows = table();
+summaryProfileRows.temporal_band = ["micro"; "motif"; "context"];
+summaryProfileRows.summary_temporal_bins = [summaryMicroTemporalBins; summaryMotifTemporalBins; summaryContextTemporalBins];
+summaryProfileRows.summary_dct_coeffs = [summaryMicroDctCoeffs; summaryMotifDctCoeffs; summaryContextDctCoeffs];
+summaryProfileRows.summary_profile = [
+    "micro_adaptive_bins6_dct4"
+    "motif_adaptive_bins12_dct8"
+    "context_adaptive_bins6_dct4"
+    ];
+summaryProfileRows.n_input_channels = repmat(nFeature, 3, 1);
+summaryProfileRows.n_boolean_transition_channels = repmat(nnz(isBoolean), 3, 1);
+summaryProfileRows.summary_dims_for_demo_channels = nFeature .* ...
+    (7 + summaryProfileRows.summary_temporal_bins + summaryProfileRows.summary_dct_coeffs) + ...
+    summaryProfileRows.n_boolean_transition_channels;
+summaryProfileRows.labels_used_for_profile_definition = repmat("none", 3, 1);
+summaryProfileRows.production_run06_analog = repmat(true, 3, 1);
+
 writetable(segments, fullfile(outRoot, 'demo_latent_state_segments_visual_only.csv'));
 writetable(transformRows, fullfile(outRoot, 'demo_condition_blind_transform_audit.csv'));
 writetable(anchorRows, fullfile(outRoot, 'demo_anchor_coverage.csv'));
+writetable(summaryProfileRows, fullfile(outRoot, 'demo_summary_profiles.csv'));
 writetable(pcaRows, fullfile(outRoot, 'demo_pca_by_scale.csv'));
 writetable(pcaRows, fullfile(outRoot, 'demo_embedding_dimension_audit.csv'));
 writetable(chunkExamples, fullfile(outRoot, 'demo_example_chunk_traces.csv'));
@@ -782,10 +858,11 @@ summaryText = {
     'run_06 principles demonstrated here:'
     '1. Fit transforms on valid frames only, without labels.'
     '2. Build anchors from frame mask, feature availability, time, and scale.'
-    '3. Keep scale-specific coverage separate from common-anchor audits.'
-    '4. Replace raw long-window flattening with multiresolution summaries.'
-    '5. Audit compact PCA dimensionality and stability before clustering.'
-    '6. Carry provenance only for diagnostics and later statistics.'
+    '3. Use common anchors for fair scale scoring.'
+    '4. Use primary scale-specific anchors for downstream coverage.'
+    '5. Give motif windows richer 12-bin/8-DCT summaries.'
+    '6. Promote score-selected scales only after stability/dimension guards.'
+    '7. Carry provenance only for diagnostics and later statistics.'
     };
 text(0, 0.95, summaryText, 'Units', 'normalized', 'Interpreter', 'none', ...
     'VerticalAlignment', 'top', 'FontName', 'Arial', 'FontSize', 10);
@@ -913,6 +990,7 @@ figureManifest.figure_file = [
 figureManifest.source_csv = [
     string(fullfile(outRoot, 'demo_anchor_coverage.csv')) + "; " + ...
         string(fullfile(outRoot, 'demo_embedding_dimension_audit.csv')) + "; " + ...
+        string(fullfile(outRoot, 'demo_summary_profiles.csv')) + "; " + ...
         string(fullfile(outRoot, 'demo_condition_blind_transform_audit.csv'))
     string(fullfile(outRoot, 'demo_example_chunk_traces.csv'))
     string(fullfile(outRoot, 'demo_scale_decision_audit.csv')) + "; " + ...
@@ -920,14 +998,14 @@ figureManifest.source_csv = [
         string(fullfile(outRoot, 'demo_principle_map.csv'))
     ];
 figureManifest.principle = [
-    "condition-blind transforms, anchor eligibility, multiresolution summaries, and PC dimensionality audits"
-    "same anchor viewed at micro, motif, short-context, and long-context scales"
+    "condition-blind transforms, two anchor banks, band-adaptive summaries, and PC dimensionality audits"
+    "same anchor viewed at primary micro, primary motif, primary context, and rejected long-context scales"
     "why scale-specific dimensionality and event-detail audits should guide the next embedding step"
     ];
 figureManifest.result_interpretation = [
-    "The toy example shows that frame-mask gaps increasingly constrain long windows, while compact summaries keep long-context representations auditable and reveal that fixed five-PC summaries can underrepresent variance."
-    "The same anchor contains different behavioral information at different scales: short windows emphasize instantaneous posture/contact and long windows preserve the sequence of approach, contact, investigation, and withdrawal context."
-    "The detail audit separates three ideas that should not be conflated: raw flattened dimensionality, compact PCA dimensionality, and social event information. This supports using run_06 as a scale survey followed by scale-specific embedding rather than a single fixed-PC representation."
+    "The toy example shows that frame-mask gaps increasingly constrain long windows, while the current band-adaptive summaries keep representations auditable: micro/context stay compact and motif windows receive richer 12-bin/8-DCT temporal detail."
+    "The same anchor contains different information at different scales: short windows emphasize instantaneous posture/contact, motif windows preserve local approach-contact-withdraw order, primary context windows capture local persistence, and long context windows are useful audits but not automatically primary."
+    "The detail audit separates four ideas that should not be conflated: raw flattened dimensionality, band-adaptive summary dimensionality, PCA dimensionality, and social event information. This supports using run_06 as a scale survey followed by scale-specific embedding rather than a single fixed-PC representation."
     ];
 figureManifest.toy_labels_used_for_fitting = [false; false; false];
 writetable(figureManifest, fullfile(outRoot, 'demo_figure_manifest.csv'));
@@ -944,7 +1022,7 @@ stepSourceCsv(1) = "demo_latent_state_segments_visual_only.csv";
 stepPrinciples(1) = "Start with time-series features and a frame-validity mask.";
 stepInterpretations(1) = "The same dyadic session contains feature dynamics and invalid frame gaps. Run_06 treats the mask as part of the data quality model, so chunk eligibility depends on whether enough valid frames surround each candidate anchor.";
 
-fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 1050 520]);
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 1180 660]);
 yyaxis left;
 plot(t, X(:,1), 'Color', [0.1 0.35 0.75], 'LineWidth', 1.0);
 ylabel('Centroid distance', 'Interpreter', 'none');
@@ -989,7 +1067,7 @@ stepSourceCsv(3) = "demo_anchor_coverage.csv";
 stepPrinciples(3) = "Candidate anchors survive only if their surrounding chunk is valid.";
 stepInterpretations(3) = "For a fixed stride, candidate anchor times are filtered by anchor-frame validity, valid-frame fraction, and finite transformed features. Longer chunks are more likely to overlap gaps, so this gate matters before any PCA or scale scoring.";
 
-scaleForAnchorDemo = find(scaleSec == 5, 1);
+scaleForAnchorDemo = find(abs(scaleSec - 5.8420) < 1e-6, 1);
 chunkFramesDemo = max(1, round(scaleSec(scaleForAnchorDemo) * fps));
 leftFramesDemo = chunkFramesDemo - 1;
 candidateFramesDemo = (1 + leftFramesDemo):strideFrames:nFrames;
@@ -1046,10 +1124,10 @@ close(fig);
 stepFigureIds(5) = "demo_run06_step05_multiresolution_summary";
 stepFigureFiles(5) = string(fullfile(figRoot, stepFigureIds(5) + ".png"));
 stepSourceCsv(5) = "demo_example_chunk_traces.csv";
-stepPrinciples(5) = "Replace raw frame-by-frame chunks with compact multiresolution summaries.";
-stepInterpretations(5) = "A chunk summary keeps coarse level, temporal bins, slow shape, and simple change information. This is why long clips can be compared without flattening every frame and every feature into an enormous vector.";
+stepPrinciples(5) = "Use band-adaptive summaries: richer temporal detail for motif windows.";
+stepInterpretations(5) = "The motif-band example uses 12 temporal bins and 8 low-frequency DCT coefficients, matching the current run_06 setting. This preserves local order in approach-contact-withdraw fragments without storing every frame as a separate dimension.";
 
-scaleForSummaryDemo = find(scaleSec == 5, 1);
+scaleForSummaryDemo = find(abs(scaleSec - 1.2601) < 1e-6, 1);
 Tsum = chunkExamples(chunkExamples.scale_index == scaleForSummaryDemo & ...
     chunkExamples.feature_name == "centroid_dist", :);
 xRel = Tsum.relative_time_s;
@@ -1057,22 +1135,24 @@ yTrace = Tsum.value;
 if any(~isfinite(yTrace))
     yTrace(~isfinite(yTrace)) = median(yTrace, 'omitnan');
 end
-binEdgesDemo = unique(round(linspace(1, numel(yTrace) + 1, summaryTemporalBins + 1)));
-binMeanX = nan(summaryTemporalBins, 1);
-binMeanY = nan(summaryTemporalBins, 1);
-for b = 1:summaryTemporalBins
+demoSummaryTemporalBins = summaryMotifTemporalBins;
+demoSummaryDctCoeffs = summaryMotifDctCoeffs;
+binEdgesDemo = unique(round(linspace(1, numel(yTrace) + 1, demoSummaryTemporalBins + 1)));
+binMeanX = nan(demoSummaryTemporalBins, 1);
+binMeanY = nan(demoSummaryTemporalBins, 1);
+for b = 1:demoSummaryTemporalBins
     idx = binEdgesDemo(b):(binEdgesDemo(b+1)-1);
     idx = idx(idx >= 1 & idx <= numel(yTrace));
     binMeanX(b) = mean(xRel(idx), 'omitnan');
     binMeanY(b) = mean(yTrace(idx), 'omitnan');
 end
-dctBasisDemo = zeros(summaryDctCoeffs, numel(yTrace));
+dctBasisDemo = zeros(demoSummaryDctCoeffs, numel(yTrace));
 mDemo = 0:(numel(yTrace)-1);
-for k = 1:summaryDctCoeffs
+for k = 1:demoSummaryDctCoeffs
     dctBasisDemo(k,:) = cos(pi * (mDemo + 0.5) * (k - 1) / numel(yTrace));
 end
 dctBasisDemo(1,:) = dctBasisDemo(1,:) ./ sqrt(numel(yTrace));
-if summaryDctCoeffs > 1
+if demoSummaryDctCoeffs > 1
     dctBasisDemo(2:end,:) = dctBasisDemo(2:end,:) .* sqrt(2 / numel(yTrace));
 end
 yCentered = yTrace(:)' - mean(yTrace, 'omitnan');
@@ -1086,7 +1166,7 @@ plot(xRel, ySmooth(:), 'Color', [0.05 0.45 0.70], 'LineWidth', 1.8);
 scatter(binMeanX, binMeanY, 55, [0.85 0.45 0.10], 'filled');
 xlabel('Time from anchor (s)', 'Interpreter', 'none');
 ylabel('Transformed distance', 'Interpreter', 'none');
-title('Step 5: multiresolution summary of one chunk', 'Interpreter', 'none');
+title('Step 5: motif-band 12-bin/8-DCT summary', 'Interpreter', 'none');
 legend({'Frame trace','Low-frequency DCT shape','Temporal-bin means'}, ...
     'Box', 'off', 'Location', 'best');
 exportgraphics(fig, fullfile(figRoot, stepFigureIds(5) + ".png"), 'Resolution', 240);
@@ -1097,7 +1177,7 @@ stepFigureIds(6) = "demo_run06_step06_dimensionality_compression";
 stepFigureFiles(6) = string(fullfile(figRoot, stepFigureIds(6) + ".png"));
 stepSourceCsv(6) = "demo_embedding_dimension_audit.csv";
 stepPrinciples(6) = "Long-window raw flattening grows quickly, while summaries stay compact.";
-stepInterpretations(6) = "Raw frame-by-channel dimensionality increases with scale. The summary representation stays much smaller, making long-window context feasible on a local workstation and auditable for PCA.";
+stepInterpretations(6) = "Raw frame-by-channel dimensionality increases with scale. The summary representation stays bounded, with a deliberate motif-band bump because motif windows carry 12 bins and 8 DCT coefficients instead of the micro/context 6-bin/4-DCT profile.";
 
 fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 1050 520]);
 plot(pcaRows.chunk_sec, pcaRows.raw_flattened_dimensions, 'o-', 'LineWidth', 1.4);
@@ -1142,15 +1222,21 @@ stepFigureIds(8) = "demo_run06_step08_scale_decision_guards";
 stepFigureFiles(8) = string(fullfile(figRoot, stepFigureIds(8) + ".png"));
 stepSourceCsv(8) = "demo_scale_decision_audit.csv";
 stepPrinciples(8) = "Promote scales only after predefined dimensionality guards.";
-stepInterpretations(8) = "High apparent scale scores are not enough. The demo separates selected explanatory scales from scales that are dominated by one PC or too low-dimensional for robust embedding.";
+stepInterpretations(8) = "High apparent scale scores are not enough. The demo mirrors the production idea that score-selected scales can be rejected before primary promotion if stability or dimensionality guards are not satisfied.";
 
 fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 1050 520]);
 yyaxis left;
 plot(demoDecisionRows.chunk_sec, demoDecisionRows.effective_dim, 'o-', 'LineWidth', 1.4);
 hold on;
+primaryMask = logical(demoDecisionRows.production_primary_scale_analog);
+scoreRejectedMask = logical(demoDecisionRows.production_score_selected_scale_analog) & ~primaryMask;
+scatter(demoDecisionRows.chunk_sec(primaryMask), demoDecisionRows.effective_dim(primaryMask), ...
+    55, [0.0 0.55 0.35], 'filled');
+scatter(demoDecisionRows.chunk_sec(scoreRejectedMask), demoDecisionRows.effective_dim(scoreRejectedMask), ...
+    55, [0.35 0.35 0.35], 'filled');
 yline(dimensionGuardMinEffectiveDim, 'k--', 'LineWidth', 1.0);
 ylabel('Effective dimension', 'Interpreter', 'none');
-ylim([0 8]);
+ylim([0 max(8, 1.15 * max(demoDecisionRows.effective_dim, [], 'omitnan'))]);
 yyaxis right;
 plot(demoDecisionRows.chunk_sec, demoDecisionRows.pc1_explained, 's-', 'LineWidth', 1.4);
 yline(dimensionGuardMaxPc1Pct, 'r--', 'LineWidth', 1.0);
@@ -1158,9 +1244,13 @@ ylabel('PC1 variance explained (%)', 'Interpreter', 'none');
 ylim([0 85]);
 set(gca, 'XScale', 'log');
 xlabel('Chunk scale (s)', 'Interpreter', 'none');
-title('Step 8: decision guards before primary-scale promotion', 'Interpreter', 'none');
-legend({'Effective dimension','Minimum effective dimension','PC1 variance','Maximum PC1 variance'}, ...
+title('Step 8: 16 score-selected analogs become 13 primary analogs', 'Interpreter', 'none');
+lgd = legend({'Eff. dimension','Primary analog','Rejected selected analog', ...
+    'Min eff. dimension','PC1 variance','Max PC1 variance'}, ...
     'Box', 'off', 'Location', 'southoutside', 'Orientation', 'horizontal');
+if isprop(lgd, 'NumColumns')
+    lgd.NumColumns = 3;
+end
 exportgraphics(fig, fullfile(figRoot, stepFigureIds(8) + ".png"), 'Resolution', 240);
 exportgraphics(fig, fullfile(figRoot, stepFigureIds(8) + ".pdf"));
 close(fig);
@@ -1222,17 +1312,17 @@ stepCaptions = [
     "## Step 4: Common versus scale-specific anchors"
     "Common all-scale anchors are valid for every candidate scale, so they are fair for scale comparison. Scale-specific anchors keep more valid material once primary scales are known. The production run_06 uses both ideas for different purposes."
     ""
-    "## Step 5: Multiresolution summary"
-    "The figure shows one chunk as a trace, a smooth low-frequency shape, and temporal-bin means. This explains how a long clip can be summarized without storing every frame as a separate dimension."
+    "## Step 5: Band-adaptive multiresolution summary"
+    "The figure shows a motif-scale chunk as a trace, a smooth low-frequency shape, and 12 temporal-bin means. Motif windows get more bins and DCT coefficients than micro/context windows because the order of approach, contact, and withdrawal matters at this time scale."
     ""
     "## Step 6: Dimensionality compression"
-    "Raw frame-by-channel dimensionality grows as windows get longer. Summary dimensions stay compact, which is why long-context analysis is feasible on a local workstation."
+    "Raw frame-by-channel dimensionality grows as windows get longer. Summary dimensions stay compact, with a visible motif-band bump from the 12-bin/8-DCT profile. That is why long-context analysis remains feasible on a local workstation while motif-scale order is represented more richly."
     ""
     "## Step 7: Scale-specific PCA"
     "Different temporal scales need different numbers of PCs. A fixed five-PC rule can miss substantial structure, so run_06 records scale-specific dimensionality guidance for the embedding step."
     ""
     "## Step 8: Decision guards"
-    "A scale should not be promoted just because it scores highly. The guards check whether the representation has enough effective dimensionality and is not dominated by one principal component."
+    "A scale should not be promoted just because it scores highly. The current production run_06 selected 16 operational scales but promoted 13 primary scales after stability and dimensionality guards. The demo marks the same idea with primary and rejected score-selected analogs."
     ""
     "## Step 9: Event-detail audit"
     "Event dwell and transition summaries show what kinds of social detail each scale can carry. At run_06 these are audits and explanations, not condition effects and not final motif definitions."
@@ -1252,16 +1342,16 @@ interpretation = [
     "# run_06 Demo Figure Interpretations"
     ""
     "## demo_run06_multiscale_walkthrough"
-    "This synthetic walkthrough illustrates the run_06 design without using project data. Toy phase labels are plotted only to orient the reader. The transform panel shows that robust scaling is fit from valid frames only. The anchor panel shows the distinction between scale-specific anchors and the conservative common-anchor set used for cross-scale audit. The frame-mask panel shows why long contexts lose more candidates. The dimensionality panel shows the main patch logic: long windows would become very high-dimensional if flattened, but multiresolution summaries keep the representation compact while still requiring more than five PCs for most scales."
+    "This synthetic walkthrough illustrates the run_06 design without using project data. Toy phase labels are plotted only to orient the reader. The transform panel shows that robust scaling is fit from valid frames only. The anchor panel shows the distinction between the conservative common-anchor bank used for fair scale scoring and the scale-specific bank used downstream. The dimensionality panel shows the current patch logic: micro/context windows use compact 6-bin/4-DCT summaries, motif windows use richer 12-bin/8-DCT summaries, and fixed five-PC summaries are not a defensible default."
     ""
     "## demo_run06_example_chunks"
-    "The same anchor is visualized at micro, motif, short-context, and long-context scales. The micro window captures instantaneous geometry near the anchor. The motif-scale window captures a local approach/contact fragment. The short-context window begins to capture local persistence. The 30 s window captures multiple transitions, which is useful for social context but should be summarized before PCA rather than flattened frame by frame."
+    "The same anchor is visualized at a primary micro, primary motif, primary context, and rejected long-context scale. The micro window captures instantaneous geometry near the anchor. The motif-scale window captures a local approach/contact fragment. The primary context window captures local persistence. The long-context window captures multiple transitions, which can be useful for audit and interpretation but should not be promoted automatically if it becomes too low-dimensional or unstable."
     ""
     "## demo_run06_scale_decision_event_detail"
-    "This figure connects dimensionality and behavioral detail. Raw frame-by-channel vectors grow linearly with window length, whereas multiresolution summaries remain compact. The five-PC reference often falls short of the variance target, so downstream embedding should use scale-specific dimensionality targets. The event panels show that longer chunks preserve transitions and direction changes that are not captured by short-window state averages alone."
+    "This figure connects dimensionality, band-adaptive summaries, and behavioral detail. Raw frame-by-channel vectors grow linearly with window length, whereas summaries remain compact with a deliberate motif-band increase. The five-PC reference often falls short of the variance target, so downstream embedding should use scale-specific dimensionality targets. The event panels show that longer chunks preserve transitions and direction changes that are not captured by short-window state averages alone."
     ""
     "## What This Demo Does Not Claim"
-    "The toy labels are not used for fitting, anchoring, PCA, or scale choice. The highlighted scales are explanatory, not a substitute for production run_06 scale scores, bootstrap stability, or dimension guards. The demo is intended to make the condition-blind logic inspectable before downstream embedding and clustering."
+    "The toy labels are not used for fitting, anchoring, PCA, or scale choice. The primary and rejected scale analogs are explanatory, not a substitute for production run_06 scale scores, bootstrap stability, or dimension guards. The demo is intended to make the condition-blind logic inspectable before downstream embedding and clustering."
     ];
 writelines(interpretation, fullfile(outRoot, 'demo_result_interpretations.md'));
 
@@ -1273,13 +1363,14 @@ walkthrough = [
     "## Files"
     "- demo_condition_blind_transform_audit.csv: robust transform fit on valid frames only."
     "- demo_anchor_coverage.csv: scale-specific anchors, all-scale common anchors, and retention."
+    "- demo_summary_profiles.csv: micro, motif, and context summary profiles used by the current run_06 logic."
     "- demo_pca_by_scale.csv: compact-summary PCA audit by scale."
-    "- demo_embedding_dimension_audit.csv: raw flattened dimensions, summary dimensions, compression, and suggested PC caps."
-    "- demo_scale_decision_audit.csv: condition-blind audit columns explaining fixed-five-PC insufficiency, dimension guards, and illustrative scale choices."
+    "- demo_embedding_dimension_audit.csv: raw flattened dimensions, band-adaptive summary dimensions, compression, and suggested PC caps."
+    "- demo_scale_decision_audit.csv: condition-blind audit columns explaining fixed-five-PC insufficiency, dimension guards, primary analogs, rejected score-selected analogs, and illustrative scale choices."
     "- demo_event_summary_by_chunk.csv: event summaries for each synthetic anchor and scale."
     "- demo_event_summary_by_scale.csv: scale-level event dwell and transition summaries."
     "- demo_principle_map.csv: reviewer-facing map from demo panels to production run_06 outputs."
-    "- demo_example_chunk_traces.csv: example micro, motif, short-context, and long-context chunks."
+    "- demo_example_chunk_traces.csv: example primary micro, primary motif, primary context, and rejected long-context chunks."
     "- demo_figure_manifest.csv: figure-to-source mapping and brief interpretation for each generated figure."
     "- demo_stepwise_figure_manifest.csv: one-row-per-teaching-step figure manifest."
     "- demo_stepwise_figure_captions.md: high-school-readable captions for the stepwise figures."
@@ -1290,15 +1381,15 @@ walkthrough = [
     "- figures/demo_run06_step02_condition_blind_transform.png: label-free robust transform."
     "- figures/demo_run06_step03_anchor_eligibility.png: valid and rejected anchor candidates."
     "- figures/demo_run06_step04_common_vs_scale_specific_anchors.png: fair scale comparison versus downstream coverage."
-    "- figures/demo_run06_step05_multiresolution_summary.png: trace, temporal bins, and low-frequency shape."
-    "- figures/demo_run06_step06_dimensionality_compression.png: raw flattening versus compact summaries."
+    "- figures/demo_run06_step05_multiresolution_summary.png: motif-band trace, 12 temporal bins, and 8-DCT low-frequency shape."
+    "- figures/demo_run06_step06_dimensionality_compression.png: raw flattening versus band-adaptive compact summaries."
     "- figures/demo_run06_step07_scale_specific_pca.png: scale-specific PC audit."
     "- figures/demo_run06_step08_scale_decision_guards.png: dimension guards before scale promotion."
     "- figures/demo_run06_step09_event_detail_audit.png: event-detail audit before embedding."
     "- demo_result_interpretations.md: result-style text for the generated demo figures."
     ""
     "## Interpretation"
-    "The demo mirrors the production rule: labels are not used to define the representation. As chunks get longer, frame-mask gaps remove more candidate anchors. The current run_06 representation summarizes each chunk with condition-blind multiresolution statistics before PCA, so long-context windows remain auditable without becoming enormous raw frame-by-channel vectors. The fixed-five-PC reference line is included to make clear that a small fixed PC count is not a defensible default for longer or richer scales."
+    "The demo mirrors the production rule: labels are not used to define the representation. As chunks get longer, frame-mask gaps remove more candidate anchors. The current run_06 representation summarizes each chunk with condition-blind band-adaptive multiresolution statistics before PCA: micro/context scales remain compact, while motif scales receive extra temporal detail. The fixed-five-PC reference line is included to make clear that a small fixed PC count is not a defensible default for longer or richer scales."
     ""
     "## Design Implication"
     "Use run_06 as a condition-blind scale survey. For final embedding, build a selected-scale bank with scale-specific anchors, stability-audited operational scales, and per-scale dimensionality targets, while retaining common-anchor outputs for cross-scale diagnostics."
