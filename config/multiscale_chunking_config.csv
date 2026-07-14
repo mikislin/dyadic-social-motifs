@@ -1,0 +1,77 @@
+parameter,value,type,env_override,description
+run_mode,smoke,string,RUN06_CHUNK_RUN_MODE,Run mode for run_06: smoke or full.
+output_dir,derived/chunks_motif_discovery_smoke,string,RUN06_CHUNK_OUTPUT_DIR,Output directory relative to repo root for chunk and scale audit outputs.
+allow_smoke_production_output,false,logical,RUN06_ALLOW_SMOKE_PRODUCTION_OUTPUT,Allow smoke mode to write to the production chunk output directory; default false prevents accidental overwrite-like smoke artifacts.
+feature_output_dir,derived/features_motif_discovery,string,RUN06_FEATURE_OUTPUT_DIR,Run_05 feature output directory relative to repo root.
+feature_session_audit_file,feature_extraction_session_audit.csv,string,,Run_05 session audit file name inside feature_output_dir.
+feature_dictionary_file,feature_dictionary.csv,string,,Run_05 feature dictionary file name inside feature_output_dir.
+chunk_mat_file,multiscale_chunkset_condition_blind.mat,string,RUN06_CHUNK_MAT_FILE,Ignored MAT artifact containing the materialized condition-blind ChunkSet and scale score objects.
+save_chunk_mat_artifact,false,logical,RUN06_SAVE_CHUNK_MAT_ARTIFACT,Write the optional ignored ChunkSet MAT artifact; default false because full dense tensors can exceed local disk capacity.
+use_scale_summary_shards,true,logical,RUN06_USE_SCALE_SUMMARY_SHARDS,Build run_06 as resumable per-scale summary shards instead of an all-scale dense ChunkSet.
+reuse_scale_summary_shards,true,logical,RUN06_REUSE_SCALE_SUMMARY_SHARDS,Reuse valid existing per-scale summary shards so interrupted local runs can resume.
+scale_summary_shard_dir,scale_summary_shards,string,RUN06_SCALE_SUMMARY_SHARD_DIR,Directory name under output_dir for per-scale summary shard MAT files.
+fps,80,number,RUN06_FPS,Expected acquisition frame rate in frames per second; run_06 asserts loaded feature sessions match this value.
+use_log_scale_bank,true,logical,RUN06_USE_LOG_SCALE_BANK,Use a log-spaced temporal scale bank.
+min_scale_sec,0.2,number,RUN06_MIN_SCALE_SEC,Minimum chunk duration in seconds.
+max_scale_sec,30,number,RUN06_MAX_SCALE_SEC,Maximum chunk duration in seconds.
+n_scales,50,number,RUN06_N_SCALES,Number of log-spaced candidate scales for full mode.
+smoke_n_scales,8,number,RUN06_SMOKE_N_SCALES,Number of log-spaced candidate scales for smoke mode.
+scale_band_micro_max_sec,0.8,number,RUN06_SCALE_BAND_MICRO_MAX_SEC,Upper exclusive temporal boundary for micro-scale labels and selection.
+scale_band_motif_max_sec,2.5,number,RUN06_SCALE_BAND_MOTIF_MAX_SEC,Upper exclusive temporal boundary for motif-scale labels and selection; larger scales are context.
+stride_sec,0.25,number,RUN06_STRIDE_SEC,Anchor stride in seconds for condition-blind anchor candidates.
+anchor_mode,past,string,RUN06_ANCHOR_MODE,Chunk geometry relative to anchor: center or past.
+min_chunk_valid_frac,0.85,number,RUN06_MIN_CHUNK_VALID_FRAC,Minimum dyad.frameMask fraction required within every selected-scale chunk.
+min_chunk_feature_finite_frac,0.95,number,RUN06_MIN_CHUNK_FEATURE_FINITE_FRAC,Minimum transformed feature finite fraction required within every selected-scale chunk.
+require_anchor_frame_valid,true,logical,RUN06_REQUIRE_ANCHOR_FRAME_VALID,Require dyad.frameMask to be true at the anchor frame.
+max_scaling_frames_per_session,10000,number,RUN06_MAX_SCALING_FRAMES_PER_SESSION,Maximum valid frames sampled per session to fit condition-blind robust transform statistics.
+smoke_max_sessions,8,number,RUN06_SMOKE_MAX_SESSIONS,Maximum run_05 success sessions selected in smoke mode by raw_index only.
+max_sessions,NaN,number,RUN06_MAX_SESSIONS,Optional cap on selected sessions after mode selection; NaN means no cap.
+max_anchor_manifest_anchors,50000,number,RUN06_MAX_ANCHOR_MANIFEST_ANCHORS,Maximum anchors materialized into the run_06 ChunkSet; selected deterministically using time/session only.
+smoke_max_anchor_manifest_anchors,512,number,RUN06_SMOKE_MAX_ANCHOR_MANIFEST_ANCHORS,Maximum anchors materialized in smoke mode.
+min_materialized_anchors_per_session,4,number,RUN06_MIN_MATERIALIZED_ANCHORS_PER_SESSION,Minimum time-even anchors per session before global fill when capacity allows.
+score_n_pcs,12,number,RUN06_SCORE_N_PCS,Per-scale PCA dimensions retained for condition-blind scale scoring embeddings; this is not the final embedding dimensionality.
+score_variance_target_pct,90,number,RUN06_SCORE_VARIANCE_TARGET_PCT,Variance target used to audit how many PCA components each temporal scale requires.
+score_n_clusters,8,number,RUN06_SCORE_N_CLUSTERS,Provisional k-means clusters used only for condition-blind scale usefulness metrics.
+score_max_chunks_per_scale,4000,number,RUN06_SCORE_MAX_CHUNKS_PER_SCALE,Maximum chunks per scale sampled by scale scoring internals.
+score_representation_mode,multiresolution,string,RUN06_SCORE_REPRESENTATION_MODE,Scale scoring representation: multiresolution summaries or legacy flattened chunks.
+summary_temporal_bins,6,number,RUN06_SUMMARY_TEMPORAL_BINS,Number of equal temporal bins per channel in multiresolution chunk summaries.
+summary_dct_coeffs,4,number,RUN06_SUMMARY_DCT_COEFFS,Number of low-frequency DCT coefficients per channel in multiresolution chunk summaries.
+summary_include_dct,true,logical,RUN06_SUMMARY_INCLUDE_DCT,Include low-frequency DCT coefficients in multiresolution chunk summaries.
+summary_use_scaled_features,true,logical,RUN06_SUMMARY_USE_SCALED_FEATURES,Use condition-blind scaled feature channels when building multiresolution summaries.
+stability_bootstraps,40,number,RUN06_STABILITY_BOOTSTRAPS,Full-mode condition-blind session-block bootstrap replicates for scale-selection stability.
+smoke_stability_bootstraps,8,number,RUN06_SMOKE_STABILITY_BOOTSTRAPS,Smoke-mode condition-blind session-block bootstrap replicates for scale-selection stability.
+stability_selection_frequency_threshold,0.7,number,RUN06_STABILITY_SELECTION_FREQUENCY_THRESHOLD,Minimum bootstrap selection frequency considered stable for audit.
+embedding_dim_micro_min_pcs,8,number,RUN06_EMBEDDING_DIM_MICRO_MIN_PCS,Minimum suggested PCs for future micro-scale embedding audit.
+embedding_dim_micro_max_pcs,24,number,RUN06_EMBEDDING_DIM_MICRO_MAX_PCS,Maximum suggested PCs for future micro-scale embedding audit.
+embedding_dim_motif_min_pcs,12,number,RUN06_EMBEDDING_DIM_MOTIF_MIN_PCS,Minimum suggested PCs for future motif-scale embedding audit.
+embedding_dim_motif_max_pcs,48,number,RUN06_EMBEDDING_DIM_MOTIF_MAX_PCS,Maximum suggested PCs for future motif-scale embedding audit.
+embedding_dim_context_min_pcs,16,number,RUN06_EMBEDDING_DIM_CONTEXT_MIN_PCS,Minimum suggested PCs for future context-scale embedding audit.
+embedding_dim_context_max_pcs,64,number,RUN06_EMBEDDING_DIM_CONTEXT_MAX_PCS,Maximum suggested PCs for future context-scale embedding audit.
+dimension_guard_min_effective_dim,2,number,RUN06_DIMENSION_GUARD_MIN_EFFECTIVE_DIM,Audit warning threshold for low effective PCA dimensionality.
+dimension_guard_max_pc1_explained_pct,80,number,RUN06_DIMENSION_GUARD_MAX_PC1_EXPLAINED_PCT,Audit warning threshold for dominant first principal component.
+primary_scale_rule,stable_and_dimension_supported,string,RUN06_PRIMARY_SCALE_RULE,Rule for final primary operational scale table after score selection audits.
+scale_specific_max_anchors_per_scale,1000,number,RUN06_SCALE_SPECIFIC_MAX_ANCHORS_PER_SCALE,Maximum scale-specific anchors retained per primary scale for final embedding-bank definition.
+smoke_scale_specific_max_anchors_per_scale,256,number,RUN06_SMOKE_SCALE_SPECIFIC_MAX_ANCHORS_PER_SCALE,Maximum scale-specific anchors retained per primary scale in smoke mode.
+scale_specific_min_anchors_per_session,2,number,RUN06_SCALE_SPECIFIC_MIN_ANCHORS_PER_SESSION,Minimum time-even scale-specific anchors per session before global fill when capacity allows.
+pca_loading_stability_splits,20,number,RUN06_PCA_LOADING_STABILITY_SPLITS,Full-mode split-half repeats for condition-blind PCA loading stability audit.
+smoke_pca_loading_stability_splits,4,number,RUN06_SMOKE_PCA_LOADING_STABILITY_SPLITS,Smoke-mode split-half repeats for condition-blind PCA loading stability audit.
+pca_loading_stability_threshold,0.75,number,RUN06_PCA_LOADING_STABILITY_THRESHOLD,Minimum median split-half PCA subspace similarity considered stable for audit.
+event_contact_threshold,0.5,number,RUN06_EVENT_CONTACT_THRESHOLD,Threshold for boolean contact-like event features in primary chunk event summaries.
+event_state_threshold,0.5,number,RUN06_EVENT_STATE_THRESHOLD,Threshold for boolean approach/withdrawal event features in primary chunk event summaries.
+event_turn_threshold_deg,45,number,RUN06_EVENT_TURN_THRESHOLD_DEG,Heading-change threshold in degrees for primary chunk event summaries.
+arena_sensitivity_n_embedding_pcs,4,number,RUN06_ARENA_SENSITIVITY_N_EMBEDDING_PCS,Number of score PCs used in post hoc arena sensitivity audit.
+arena_sensitivity_top_n_features,8,number,RUN06_ARENA_SENSITIVITY_TOP_N_FEATURES,Number of top loading features serialized in post hoc arena sensitivity audit.
+rng_seed,123,number,RUN06_RNG_SEED,Random seed for condition-blind scale scoring and deterministic reproducibility.
+selected_n_micro,7,number,RUN06_SELECTED_N_MICRO,Number of operational micro scales selected from usefulness scores.
+selected_n_motif,7,number,RUN06_SELECTED_N_MOTIF,Number of operational motif scales selected from usefulness scores.
+selected_n_context,7,number,RUN06_SELECTED_N_CONTEXT,Number of operational context scales selected from usefulness scores.
+selected_min_log_gap,0.12,number,RUN06_SELECTED_MIN_LOG_GAP,Minimum log10 separation among selected scales within a temporal role.
+example_anchor_count,4,number,RUN06_EXAMPLE_ANCHOR_COUNT,Number of example anchors per selected scale in trace source tables.
+figure_export_png,true,logical,RUN06_FIGURE_EXPORT_PNG,Write PNG copies of run_06 QC figures.
+figure_export_pdf,true,logical,RUN06_FIGURE_EXPORT_PDF,Write PDF copies of run_06 QC figures.
+figure_dpi,320,number,RUN06_FIGURE_DPI,PNG export resolution for run_06 QC figures.
+figure_font_name,Arial,string,RUN06_FIGURE_FONT_NAME,Figure font name.
+figure_font_size,9,number,RUN06_FIGURE_FONT_SIZE,Base figure font size.
+selection_rule,status success & include_motif_discovery == 1 & qc_pass_motif_discovery == 1 & n_features == canonical clustering candidates,string,,Condition-blind run_05 output inclusion rule.
+anchor_selection_rule,dyad.frameMask + transformed feature availability + fixed stride + deterministic time-even materialization; no condition cohort arena drug genotype or outcome labels,string,,Predefined anchor rule for reviewer audit.
+scale_selection_rule,condition-blind quantitative coverage validity representation persistence redundancy and complementarity scores,string,,Predefined scale usefulness rule; provenance labels are excluded from scoring.

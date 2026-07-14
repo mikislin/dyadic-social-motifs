@@ -23,6 +23,11 @@ ScaleScore = score_multiscale_chunk_bank(ChunkSet, ...
 verifyTrue(testCase, isfield(ScaleScore, 'scaleTable'));
 verifyEqual(testCase, height(ScaleScore.scaleTable), 12);
 verifyTrue(testCase, height(ScaleScore.selectedTable) >= 3);
+verifyTrue(testCase, isfield(ScaleScore, 'embeddingDimensionAudit'));
+verifyEqual(testCase, height(ScaleScore.embeddingDimensionAudit), 12);
+verifyTrue(testCase, all(ScaleScore.scaleTable.representation_mode == "multiresolution"));
+verifyTrue(testCase, all(ScaleScore.scaleTable.representation_dims > 0));
+verifyTrue(testCase, any(ScaleScore.scaleTable.representation_dims < ScaleScore.scaleTable.raw_flattened_dims));
 end
 
 function testValidateLayerRuns(testCase)
@@ -44,6 +49,32 @@ ScaleScore = score_multiscale_chunk_bank(ChunkSet, ...
 
 Report = validate_scale_usefulness_scores(ScaleScore, 'makePlots', false, 'verbose', false);
 verifyTrue(testCase, Report.isValid);
+
+Stability = estimate_scale_selection_stability(ScaleScore, ...
+    'nBootstraps', 3, ...
+    'nMicro', 2, ...
+    'nMotif', 2, ...
+    'nContext', 2, ...
+    'minLogGap', 0.05, ...
+    'rngSeed', 77);
+verifyEqual(testCase, height(Stability), height(ScaleScore.scaleTable));
+verifyTrue(testCase, all(Stability.labels_used_for_stability == "none"));
+verifyTrue(testCase, all(Stability.selection_frequency >= 0 & Stability.selection_frequency <= 1));
+
+LoadingStability = estimate_pca_loading_stability(ScaleScore, ...
+    'nSplits', 2, ...
+    'nPCs', 3, ...
+    'rngSeed', 81);
+verifyEqual(testCase, height(LoadingStability), height(ScaleScore.scaleTable));
+verifyTrue(testCase, all(LoadingStability.labels_used_for_loading_stability == "none"));
+verifyTrue(testCase, all(LoadingStability.median_subspace_similarity >= 0 | isnan(LoadingStability.median_subspace_similarity)));
+
+ArenaAudit = audit_arena_embedding_sensitivity(ScaleScore, dyad.featureMeta, ...
+    'nEmbeddingPCs', 2, ...
+    'topNFeatures', 3);
+verifyEqual(testCase, height(ArenaAudit), height(ScaleScore.scaleTable));
+verifyTrue(testCase, all(ArenaAudit.audit_only_not_selection));
+verifyTrue(testCase, all(ArenaAudit.condition_used_for_embedding_fit == 0));
 end
 
 function dyad = i_make_mock_dyad(T, fps)

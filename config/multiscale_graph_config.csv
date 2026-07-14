@@ -1,0 +1,26 @@
+parameter,value,type,env_override,description
+run_mode,smoke,string,RUN08_GRAPH_RUN_MODE,Run mode for run_08: smoke or full.
+output_dir,derived/graph_motif_discovery_smoke,string,RUN08_GRAPH_OUTPUT_DIR,Output directory relative to repo root for graph/topology outputs.
+embedding_input_dir,derived/embedding_motif_discovery_smoke,string,RUN08_EMBEDDING_INPUT_DIR,Run_07 embedding output directory containing condition-blind global scores.
+embedding_scores_file,embedding_global_scores.csv,string,,Run_07 condition-blind score table.
+embedding_row_manifest_file,embedding_row_manifest.csv,string,,Run_07 row manifest used only for post-fit arena and event matching audits.
+embedding_input_scale_audit_file,embedding_input_scale_audit.csv,string,,Run_07 input scale audit used to resolve the run_06 event-summary source.
+embedding_feature_dictionary_file,embedding_feature_dictionary.csv,string,,Run_07 embedding feature dictionary for event-summary provenance.
+primary_event_summary_file,primary_chunk_event_summary_audit.csv,string,,Run_06 primary event summary used for condition-blind rare/social event coverage audits.
+graph_model_mat_file,condition_blind_motif_graph_model.mat,string,RUN08_GRAPH_MODEL_MAT_FILE,Ignored MAT artifact containing graph model arrays and audits.
+graph_n_pcs,24,number,RUN08_GRAPH_N_PCS,Number of leading run_07 global PCs used to build the kNN graph.
+k_neighbors,30,number,RUN08_K_NEIGHBORS,Primary k for directed nearest-neighbor graph construction.
+k_sensitivity_values,10;20;30;50,number_list,RUN08_K_SENSITIVITY_VALUES,Condition-blind k values for graph topology sensitivity audits.
+knn_block_size,512,number,RUN08_KNN_BLOCK_SIZE,Rows per block for memory-bounded exact nearest-neighbor search.
+standardize_graph_scores,true,logical,RUN08_STANDARDIZE_GRAPH_SCORES,Robust-standardize selected global PCs before graph construction.
+graph_score_winsor_abs,8,number,RUN08_GRAPH_SCORE_WINSOR_ABS,Condition-blind absolute cap on robust-standardized graph input scores.
+min_event_valid_fraction,0.5,number,RUN08_MIN_EVENT_VALID_FRACTION,Minimum event-valid fraction before a row contributes to rare/social event coverage.
+high_quantile_threshold,0.9,number,RUN08_HIGH_QUANTILE_THRESHOLD,Within-scale quantile used for high-speed and high-turn event audits.
+figure_export_png,true,logical,RUN08_FIGURE_EXPORT_PNG,Write PNG copies of run_08 QC figures.
+figure_export_pdf,true,logical,RUN08_FIGURE_EXPORT_PDF,Write PDF copies of run_08 QC figures.
+figure_dpi,320,number,RUN08_FIGURE_DPI,PNG export resolution for run_08 QC figures.
+figure_font_name,Arial,string,RUN08_FIGURE_FONT_NAME,Figure font name.
+figure_font_size,9,number,RUN08_FIGURE_FONT_SIZE,Base figure font size.
+graph_rule,exact k-nearest-neighbor graph on run_07 global PCs only,string,,Graph construction rule; no labels or post-fit audits enter neighbors.
+event_coverage_rule,post-fit condition-blind event coverage audit after graph construction from run_06 primary event summaries,string,,Rare/social event coverage is audited after graph construction and does not change graph edges.
+label_exclusion_rule,no condition cohort group drug genotype outcome or arena labels enter graph construction topology sensitivity or graph input score preprocessing,string,,Non-bypassable label exclusion rule for run_08.

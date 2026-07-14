@@ -10,10 +10,12 @@ function ScaleScore = score_multiscale_chunk_bank(ChunkSet, varargin)
 %   ChunkSet : output of build_multiscale_chunk_dataset
 %
 % Name-value pairs
-%   'nPCs'               : per-scale PCA dimensions for scoring (default 6)
+%   'nPCs'               : per-scale PCA dimensions for scoring embeddings (default 12)
+%   'varianceTargetPct'  : PCA variance target audited per scale (default 90)
 %   'nClusters'          : provisional kmeans clusters for coherence scoring (default 8)
 %   'maxChunksPerScale'  : cap per-scale sample size for fitting (default 4000)
 %   'featureNames'       : features to emphasize in trajectory coherence (default auto)
+%   'representationMode' : 'multiresolution' or 'flattened' (default multiresolution)
 %   'rngSeed'            : RNG seed (default 1)
 %   'verbose'            : print summaries (default true)
 %
@@ -34,14 +36,29 @@ function ScaleScore = score_multiscale_chunk_bank(ChunkSet, varargin)
 %           plot_scale_usefulness_diagnostics
 
 p = inputParser;
-p.addParameter('nPCs', 6, @(x)isscalar(x) && x >= 2);
+p.addParameter('nPCs', 12, @(x)isscalar(x) && x >= 2);
+p.addParameter('varianceTargetPct', 90, @(x)isscalar(x) && x > 0 && x < 100);
 p.addParameter('nClusters', 8, @(x)isscalar(x) && x >= 2);
 p.addParameter('maxChunksPerScale', 4000, @(x)isscalar(x) && x >= 200);
 p.addParameter('featureNames', strings(0,1), @(x)isstring(x) || iscell(x));
+p.addParameter('representationMode', 'multiresolution', @(x)ischar(x) || isstring(x));
+p.addParameter('summaryTemporalBins', 6, @(x)isscalar(x) && x >= 1);
+p.addParameter('summaryDctCoeffs', 4, @(x)isscalar(x) && x >= 0);
+p.addParameter('summaryIncludeDct', true, @(x)islogical(x) || isnumeric(x));
+p.addParameter('summaryUseScaledFeatures', true, @(x)islogical(x) || isnumeric(x));
 p.addParameter('rngSeed', 1, @isscalar);
 p.addParameter('verbose', true, @(x)islogical(x) || isnumeric(x));
+p.addParameter('microMaxSec', 0.8, @(x)isscalar(x) && x > 0);
+p.addParameter('motifMaxSec', 2.5, @(x)isscalar(x) && x > 0);
 p.parse(varargin{:});
 P = p.Results;
+P.representationMode = lower(string(P.representationMode));
+assert(any(P.representationMode == ["multiresolution","flattened"]), ...
+    'score_multiscale_chunk_bank:BadRepresentationMode', ...
+    'representationMode must be multiresolution or flattened.');
+assert(P.motifMaxSec > P.microMaxSec, ...
+    'score_multiscale_chunk_bank:BadBandCutoffs', ...
+    'motifMaxSec must be greater than microMaxSec.');
 
 rng(P.rngSeed);
 
@@ -63,10 +80,14 @@ assert(~isempty(anchorTable), 'No common anchors found across scales.');
 
 nScale = numel(ChunkSet.scale);
 embedByScale = cell(nScale,1);
+dimensionAudits = cell(nScale,1);
+summaryDimMeta = cell(nScale,1);
 
 for s = 1:nScale
     Sc = ChunkSet.scale(s);
     embedByScale{s} = i_fit_scale_embedding(Sc, ChunkSet, anchorTable, P, featureNames);
+    dimensionAudits{s} = embedByScale{s}.dimensionAudit;
+    summaryDimMeta{s} = embedByScale{s}.dimMeta;
 end
 
 % ---------------------------------------------------------------------
@@ -75,22 +96,32 @@ end
 rows = table();
 for s = 1:nScale
     E = embedByScale{s};
-    rep = i_representation_metrics(E);
+    rep = i_representation_metrics(E, P);
     coh = i_coherence_metrics(E, P.nClusters);
     tmp = i_temporal_metrics(E);
 
     [predShort, predLong, redShort, redLong] = i_crossscale_metrics(embedByScale, s);
 
-    band = i_initial_band_from_scale(E.chunk_sec);
+    band = i_initial_band_from_scale(E.chunk_sec, P.microMaxSec, P.motifMaxSec);
     rows = [rows; table( ...
         s, E.chunk_sec, E.chunk_frames, E.nAnchors, ...
-        band, rep.pc1_explained, rep.cum5_explained, rep.effective_dim, ...
+        string(E.representation_mode), E.n_input_channels, E.raw_flattened_dims, ...
+        E.representation_dims, E.representation_compression_ratio, ...
+        band, rep.pc1_explained, rep.cum5_explained, rep.cum10_explained, ...
+        rep.cum20_explained, rep.cum_embedding_pcs_explained, rep.effective_dim, ...
+        rep.n_pcs_80pct, rep.n_pcs_90pct, rep.n_pcs_95pct, ...
+        rep.target_variance_pct, rep.n_pcs_target_pct, rep.target_variance_reached, ...
         coh.silhouette_like, coh.within_cluster_dispersion, coh.between_cluster_separation, ...
         tmp.lag1_embedding_corr, tmp.label_run_frames, tmp.transition_entropy, ...
         predShort, predLong, redShort, redLong, ...
         'VariableNames', { ...
         'scale_index','chunk_sec','chunk_frames','n_anchors', ...
-        'initial_band','pc1_explained','cum5_explained','effective_dim', ...
+        'representation_mode','n_input_channels','raw_flattened_dims', ...
+        'representation_dims','representation_compression_ratio', ...
+        'initial_band','pc1_explained','cum5_explained','cum10_explained', ...
+        'cum20_explained','cum_embedding_pcs_explained','effective_dim', ...
+        'n_pcs_80pct','n_pcs_90pct','n_pcs_95pct', ...
+        'target_variance_pct','n_pcs_target_pct','target_variance_reached', ...
         'silhouette_like','within_cluster_dispersion','between_cluster_separation', ...
         'lag1_embedding_corr','label_run_frames','transition_entropy', ...
         'predict_short_r2','predict_long_r2','redundancy_short','redundancy_long'})]; %#ok<AGROW>
@@ -105,12 +136,16 @@ ScaleScore = struct();
 ScaleScore.scaleTable = rows;
 ScaleScore.embeddingByScale = embedByScale;
 ScaleScore.anchorTable = anchorTable;
+ScaleScore.embeddingDimensionAudit = vertcat(dimensionAudits{:});
+ScaleScore.summaryDimensionMeta = vertcat(summaryDimMeta{:});
 ScaleScore.params = P;
 ScaleScore.selectedTable = select_operational_timescales(ScaleScore);
 
 if P.verbose
     disp('=== Scale usefulness: per-scale summary ===');
-    disp(rows(:, {'scale_index','chunk_sec','initial_band','pc1_explained','cum5_explained', ...
+    disp(rows(:, {'scale_index','chunk_sec','initial_band','pc1_explained', ...
+        'representation_dims','representation_compression_ratio', ...
+        'cum_embedding_pcs_explained','n_pcs_90pct','effective_dim', ...
         'silhouette_like','lag1_embedding_corr','label_run_frames', ...
         'predict_short_r2','predict_long_r2','composite_micro','composite_motif','composite_context'}));
     disp('=== Recommended operational subset ===');
@@ -197,6 +232,12 @@ for sess = 1:ChunkSet.nSessions
         T.session_index = repmat(sess, nnz(keep), 1);
         T.anchor_frame = refFrame(keep);
         T.anchor_time_s = refTimes(keep);
+        T.raw_index = repmat(i_session_field(ChunkSet, sess, 'raw_index', NaN), nnz(keep), 1);
+        T.session_id = repmat(i_session_field(ChunkSet, sess, 'session_id', ""), nnz(keep), 1);
+        T.session_file = repmat(i_session_field(ChunkSet, sess, 'session_file', ""), nnz(keep), 1);
+        T.arena = repmat(i_session_field(ChunkSet, sess, 'arena', ""), nnz(keep), 1);
+        T.arena_label = repmat(i_session_field(ChunkSet, sess, 'arena_label', ""), nnz(keep), 1);
+        T.qc_set = repmat(i_session_field(ChunkSet, sess, 'qc_set', ""), nnz(keep), 1);
         rows = [rows; T]; %#ok<AGROW>
     end
 end
@@ -208,13 +249,57 @@ if ~isempty(anchorTable)
 end
 end
 
+function value = i_session_field(ChunkSet, sess, fieldName, defaultValue)
+value = defaultValue;
+if isfield(ChunkSet, 'sessions') && numel(ChunkSet.sessions) >= sess && ...
+        isstruct(ChunkSet.sessions{sess}) && isfield(ChunkSet.sessions{sess}, fieldName)
+    value = ChunkSet.sessions{sess}.(fieldName);
+end
+if isstring(defaultValue) || ischar(defaultValue)
+    value = string(value);
+else
+    value = double(value);
+end
+end
+
 function E = i_fit_scale_embedding(Sc, ChunkSet, anchorTable, P, featureNames)
 meta = Sc.meta;
 idx = i_align_anchor_rows(meta, anchorTable, ChunkSet.sessions, Sc.chunkSec);
 
-X = Sc.Xraw(idx,:,:);
-valid = Sc.valid(idx,:);
-Xflat = flatten_chunk_tensor(Sc, ChunkSet, X, valid, featureNames);
+if isfield(Sc, 'Xsummary') && ~isempty(Sc.Xsummary)
+    assert(P.representationMode == "multiresolution", ...
+        'score_multiscale_chunk_bank:ShardRequiresMultiresolution', ...
+        'Precomputed scale summary shards require representationMode=multiresolution.');
+    Xflat = Sc.Xsummary(idx, :);
+    assert(isfield(Sc, 'summaryDimMeta') && istable(Sc.summaryDimMeta), ...
+        'score_multiscale_chunk_bank:MissingShardDimMeta', ...
+        'Scale summary shards must include summaryDimMeta.');
+    assert(isfield(Sc, 'dimensionAudit') && istable(Sc.dimensionAudit), ...
+        'score_multiscale_chunk_bank:MissingShardDimensionAudit', ...
+        'Scale summary shards must include dimensionAudit.');
+    dimMeta = Sc.summaryDimMeta;
+    dimensionAudit = Sc.dimensionAudit;
+    dimensionAudit.n_chunks = size(Xflat, 1);
+elseif P.representationMode == "multiresolution"
+    X = Sc.Xraw(idx,:,:);
+    valid = Sc.valid(idx,:);
+    ScAligned = Sc;
+    ScAligned.X = Sc.X(idx,:,:);
+    ScAligned.Xraw = X;
+    ScAligned.valid = valid;
+    ScAligned.meta = Sc.meta(idx, :);
+    [Xflat, dimMeta, dimensionAudit] = summarize_multiresolution_chunks(ScAligned, ChunkSet, ...
+        'featureNames', featureNames, ...
+        'nTemporalBins', P.summaryTemporalBins, ...
+        'nDctCoeffs', P.summaryDctCoeffs, ...
+        'includeDct', P.summaryIncludeDct, ...
+        'useScaledFeatures', P.summaryUseScaledFeatures);
+else
+    X = Sc.Xraw(idx,:,:);
+    valid = Sc.valid(idx,:);
+    [Xflat, dimMeta] = i_flatten_chunk_tensor(Sc, ChunkSet, X, valid, featureNames);
+    dimensionAudit = i_flatten_dimension_audit(Sc, ChunkSet, Xflat, featureNames);
+end
 
 % Sample for model fit.
 nA = size(Xflat,1);
@@ -224,10 +309,15 @@ else
     fitIdx = 1:nA;
 end
 
-[Xproc, prep] = i_preprocess_chunk_matrix(Xflat(fitIdx,:));
-[coeff, scoreFit, latent, ~, explained, mu] = pca(Xproc, 'NumComponents', min([P.nPCs, size(Xproc,2), size(Xproc,1)-1])); %#ok<ASGLU>
+[Xproc, prep] = i_preprocess_chunk_matrix(double(Xflat(fitIdx,:)));
+maxPC = min([size(Xproc,2), size(Xproc,1)-1]);
+warnState = warning('off', 'stats:pca:ColRankDefX');
+warnCleanup = onCleanup(@() warning(warnState)); %#ok<NASGU>
+[coeffAll, ~, latent, ~, explained, mu] = pca(Xproc, 'NumComponents', maxPC); %#ok<ASGLU>
+nScorePC = min(P.nPCs, size(coeffAll, 2));
+coeff = coeffAll(:, 1:nScorePC);
 
-XallProc = i_apply_preprocess_chunk_matrix(Xflat, prep);
+XallProc = i_apply_preprocess_chunk_matrix(double(Xflat), prep);
 scoreAll = (XallProc - mu) * coeff;
 scoreAll = scoreAll(:, 1:min(P.nPCs, size(scoreAll,2)));
 
@@ -235,12 +325,23 @@ scoreAll = scoreAll(:, 1:min(P.nPCs, size(scoreAll,2)));
 K = min(P.nClusters, max(2, floor(sqrt(size(scoreAll,1)/40))));
 labels = kmeans(scoreAll, K, 'Replicates', 3, 'MaxIter', 200, 'Display', 'off');
 
+dimensionAudit.n_pca_fit_chunks = nA;
+dimensionAudit.n_pca_fit_chunks_used = numel(fitIdx);
+dimensionAudit.n_pca_fit_dims = size(Xproc, 2);
+dimensionAudit.n_score_pcs_retained = size(scoreAll, 2);
+dimensionAudit.score_pcs_variance_explained = sum(explained(1:min(size(scoreAll,2), numel(explained))));
+dimensionAudit.n_pcs_80pct = i_pcs_for_variance(cumsum(explained(:)), 80);
+dimensionAudit.n_pcs_90pct = i_pcs_for_variance(cumsum(explained(:)), 90);
+dimensionAudit.n_pcs_95pct = i_pcs_for_variance(cumsum(explained(:)), 95);
+dimensionAudit.effective_dim = i_effective_dim(explained(:));
+dimensionAudit.condition_labels_used_for_pca = "none";
+
 E = struct();
 E.chunk_sec = Sc.chunkSec;
 E.chunk_frames = Sc.nFrames;
 E.anchorTable = anchorTable;
 E.featureNames = featureNames;
-E.Xflat = Xflat;
+E.Xflat = single(Xflat);
 E.score = scoreAll;
 E.coeff = coeff;
 E.mu = mu;
@@ -248,10 +349,17 @@ E.explained = explained(:);
 E.labels = labels(:);
 E.preprocess = prep;
 E.nAnchors = size(scoreAll,1);
+E.representation_mode = P.representationMode;
+E.n_input_channels = dimensionAudit.n_input_channels;
+E.raw_flattened_dims = dimensionAudit.n_raw_flattened_dims;
+E.representation_dims = dimensionAudit.n_summary_dims;
+E.representation_compression_ratio = dimensionAudit.compression_ratio_raw_to_summary;
+E.dimensionAudit = dimensionAudit;
+E.dimMeta = dimMeta;
 end
 
-function Xflat = flatten_chunk_tensor(Sc, ChunkSet, XrawOverride, validOverride, featureNames)
-%FLATTEN_CHUNK_TENSOR Flatten selected chunk features into one row per chunk.
+function [Xflat, dimMeta] = i_flatten_chunk_tensor(Sc, ChunkSet, XrawOverride, validOverride, featureNames)
+%I_FLATTEN_CHUNK_TENSOR Flatten selected chunk channels into one row per chunk.
 if nargin < 3 || isempty(XrawOverride)
     XrawOverride = Sc.Xraw;
 end
@@ -264,8 +372,8 @@ else
     featureNames = string(featureNames);
 end
 
-featIdx = find(ismember(string(ChunkSet.featureNames), featureNames));
-assert(~isempty(featIdx), 'No requested featureNames were found in ChunkSet.featureNames.');
+featIdx = find(ismember(string(ChunkSet.channelMeta.BaseFeature), featureNames));
+assert(~isempty(featIdx), 'No requested featureNames were found in ChunkSet.channelMeta.');
 
 X = XrawOverride(:,:,featIdx);
 valid = validOverride;
@@ -280,6 +388,68 @@ for i = 1:n
     Xi(~vi, :) = NaN;
     Xflat(i,:) = reshape(Xi.', 1, []);
 end
+
+obsNames = string(ChunkSet.channelMeta.ObsName(featIdx));
+baseFeature = string(ChunkSet.channelMeta.BaseFeature(featIdx));
+channelType = string(ChunkSet.channelMeta.ChannelType(featIdx));
+dimMeta = table();
+row = 0;
+for t = 1:L
+    for j = 1:d
+        row = row + 1;
+        one = table();
+        one.summary_dim_index = row;
+        one.scale_index = NaN;
+        if isfield(Sc, 'meta') && istable(Sc.meta) && ismember('scale_index', Sc.meta.Properties.VariableNames) && ~isempty(Sc.meta)
+            one.scale_index = Sc.meta.scale_index(1);
+        end
+        one.chunk_sec = Sc.chunkSec;
+        one.obs_name = obsNames(j);
+        one.base_feature = baseFeature(j);
+        one.channel_type = channelType(j);
+        one.summary_kind = "raw_frame";
+        one.temporal_bin = t;
+        one.dct_coefficient = NaN;
+        one.source_tensor = "transformed_unscaled";
+        one.mean_frame_valid_fraction_for_channel = mean(valid(:), 'omitnan');
+        one.uses_frame_mask = true;
+        one.labels_used_for_summary = "none";
+        dimMeta = [dimMeta; one]; %#ok<AGROW>
+    end
+end
+end
+
+function audit = i_flatten_dimension_audit(Sc, ChunkSet, Xflat, featureNames)
+channelIdx = find(ismember(string(ChunkSet.channelMeta.BaseFeature), string(featureNames)));
+audit = table();
+audit.scale_index = NaN;
+if isfield(Sc, 'meta') && istable(Sc.meta) && ismember('scale_index', Sc.meta.Properties.VariableNames) && ~isempty(Sc.meta)
+    audit.scale_index = Sc.meta.scale_index(1);
+end
+audit.chunk_sec = Sc.chunkSec;
+audit.chunk_frames = Sc.nFrames;
+audit.n_chunks = size(Xflat, 1);
+audit.n_input_channels = numel(channelIdx);
+audit.n_raw_flattened_dims = size(Xflat, 2);
+audit.n_summary_dims = size(Xflat, 2);
+audit.compression_ratio_raw_to_summary = 1;
+audit.n_temporal_bins = Sc.nFrames;
+audit.n_dct_coeffs = 0;
+audit.n_boolean_transition_channels = nnz(string(ChunkSet.channelMeta.ChannelType(channelIdx)) == "boolean");
+audit.summary_method = "raw_frame_flattening";
+audit.source_tensor = "transformed_unscaled";
+audit.uses_frame_mask = true;
+audit.labels_used_for_summary = "none";
+end
+
+function eff = i_effective_dim(explained)
+explained = explained(:);
+if isempty(explained) || all(~isfinite(explained))
+    eff = NaN;
+    return
+end
+l = explained ./ max(sum(explained, 'omitnan'), eps);
+eff = 1 / max(sum(l.^2, 'omitnan'), eps);
 end
 
 
@@ -324,6 +494,7 @@ D = size(X,2);
 Xw = X;
 med = nan(1,D);
 sc = nan(1,D);
+scaleFloor = 1e-6;
 for j = 1:D
     x = Xw(:,j);
     ok = isfinite(x);
@@ -332,11 +503,14 @@ for j = 1:D
         x(ok) = min(max(x(ok), q(1)), q(2));
         med(j) = median(x(ok));
         sc(j) = iqr(x(ok));
-        if ~(isfinite(sc(j)) && sc(j) > 0)
+        if ~(isfinite(sc(j)) && sc(j) > scaleFloor)
             sc(j) = std(x(ok), 0);
         end
-        if ~(isfinite(sc(j)) && sc(j) > 0)
+        if ~(isfinite(sc(j)) && sc(j) > scaleFloor)
+            Xw(:,j) = 0;
+            med(j) = 0;
             sc(j) = 1;
+            continue
         end
         x(~ok) = med(j);
         Xw(:,j) = (x - med(j)) ./ sc(j);
@@ -360,16 +534,35 @@ for j = 1:size(X,2)
 end
 end
 
-function rep = i_representation_metrics(E)
+function rep = i_representation_metrics(E, P)
 expl = E.explained(:);
 if isempty(expl)
     expl = zeros(1,1);
 end
+cumExpl = cumsum(expl);
 rep = struct();
 rep.pc1_explained = expl(1);
 rep.cum5_explained = sum(expl(1:min(5,numel(expl))));
+rep.cum10_explained = sum(expl(1:min(10,numel(expl))));
+rep.cum20_explained = sum(expl(1:min(20,numel(expl))));
+rep.cum_embedding_pcs_explained = sum(expl(1:min(P.nPCs,numel(expl))));
 l = expl / max(sum(expl), eps);
 rep.effective_dim = 1 / max(sum(l.^2), eps);
+rep.n_pcs_80pct = i_pcs_for_variance(cumExpl, 80);
+rep.n_pcs_90pct = i_pcs_for_variance(cumExpl, 90);
+rep.n_pcs_95pct = i_pcs_for_variance(cumExpl, 95);
+rep.target_variance_pct = P.varianceTargetPct;
+rep.n_pcs_target_pct = i_pcs_for_variance(cumExpl, P.varianceTargetPct);
+rep.target_variance_reached = isfinite(rep.n_pcs_target_pct);
+end
+
+function n = i_pcs_for_variance(cumExpl, targetPct)
+idx = find(cumExpl >= targetPct, 1, 'first');
+if isempty(idx)
+    n = NaN;
+else
+    n = idx;
+end
 end
 
 function coh = i_coherence_metrics(E, K)
@@ -454,7 +647,7 @@ r2 = nan(1,size(Xb,2));
 for j = 1:size(Xb,2)
     y = Xb(:,j);
     X = [ones(size(Xa,1),1), Xa];
-    beta = X \ y;
+    beta = i_ridge_solve(X, y);
     yhat = X * beta;
     ssRes = sum((y - yhat).^2);
     ssTot = sum((y - mean(y)).^2);
@@ -466,10 +659,15 @@ cc = corr(Xa, Xb, 'Rows', 'pairwise');
 redundancy = median(abs(cc(:)), 'omitnan');
 end
 
+function beta = i_ridge_solve(X, y)
+beta = pinv(X) * y;
+end
+
 function rows = i_add_normalized_scores(rows)
 % Larger-is-better metrics.
 rows.z_pc1 = i_z(rows.pc1_explained);
 rows.z_cum5 = i_z(rows.cum5_explained);
+rows.z_cum_embedding_pcs = i_z(rows.cum_embedding_pcs_explained);
 rows.z_effdim = i_z(rows.effective_dim);
 rows.z_sil = i_z(rows.silhouette_like);
 rows.z_between = i_z(rows.between_cluster_separation);
@@ -484,14 +682,14 @@ rows.z_transEntropy = i_z(rows.transition_entropy);
 % Role-specific composites.
 rows.composite_micro = ...
     0.35 * rows.z_pc1 + ...
-    0.20 * rows.z_cum5 + ...
+    0.20 * rows.z_cum_embedding_pcs + ...
     0.15 * rows.z_sil + ...
     0.20 * (-rows.z_run) + ...
     0.10 * rows.z_pred_long;
 
 rows.composite_motif = ...
     0.20 * rows.z_pc1 + ...
-    0.15 * rows.z_cum5 + ...
+    0.15 * rows.z_cum_embedding_pcs + ...
     0.20 * rows.z_sil + ...
     0.15 * rows.z_between + ...
     0.15 * rows.z_persist + ...
@@ -500,8 +698,8 @@ rows.composite_motif = ...
 
 rows.composite_context = ...
     0.10 * rows.z_pc1 + ...
-    0.15 * rows.z_cum5 + ...
-    0.15 * rows.z_effdim + ...
+    0.10 * rows.z_cum_embedding_pcs + ...
+    0.20 * rows.z_effdim + ...
     0.20 * rows.z_persist + ...
     0.20 * rows.z_run + ...
     0.10 * rows.z_pred_short + ...
@@ -524,10 +722,10 @@ else
 end
 end
 
-function band = i_initial_band_from_scale(scaleSec)
-if scaleSec < 0.9
+function band = i_initial_band_from_scale(scaleSec, microMaxSec, motifMaxSec)
+if scaleSec < microMaxSec
     band = "micro";
-elseif scaleSec < 2.6
+elseif scaleSec < motifMaxSec
     band = "motif";
 else
     band = "context";

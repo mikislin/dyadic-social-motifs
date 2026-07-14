@@ -14,7 +14,13 @@ issueList = strings(0,1);
 for s = 1:nScale
     Sc = ChunkSet.scale(s);
     meta = Sc.meta;
-    nChunks = size(Sc.X,1);
+    if isfield(Sc, 'X') && ~isempty(Sc.X)
+        nChunks = size(Sc.X,1);
+    elseif isfield(Sc, 'Xsummary') && ~isempty(Sc.Xsummary)
+        nChunks = size(Sc.Xsummary,1);
+    else
+        nChunks = height(meta);
+    end
     minVF = NaN; meanVF = NaN; medStride = NaN;
     if ~isempty(meta)
         minVF = min(meta.valid_frac); meanVF = mean(meta.valid_frac);

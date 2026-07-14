@@ -13,7 +13,7 @@ required = ["step_id", "script_path", "enabled", "default_audit_mode", ...
     "description", "script_abs_path"];
 verifyTrue(testCase, all(ismember(required, string(registry.Properties.VariableNames))));
 verifyEqual(testCase, numel(unique(registry.step_id)), height(registry));
-verifyTrue(testCase, all(ismember("run_0" + string(1:5), registry.step_id)));
+verifyTrue(testCase, all(ismember("run_0" + string(1:8), registry.step_id)));
 verifyTrue(testCase, all(isfile(registry.script_abs_path)));
 verifyTrue(testCase, all(startsWith(registry.script_path, "paper/")));
 verifyTrue(testCase, all(ismember(registry.default_audit_mode, ["smoke", "full"])));
@@ -31,6 +31,21 @@ verifyEqual(testCase, registry.smoke_env(registry.step_id == "run_05"), ...
     "RUN05_FEATURE_RUN_MODE=smoke;RUN05_SKIP_EXISTING=true");
 verifyEqual(testCase, registry.full_env(registry.step_id == "run_05"), ...
     "RUN05_FEATURE_RUN_MODE=full");
+verifyTrue(testCase, registry.smoke_safe(registry.step_id == "run_06"));
+verifyEqual(testCase, registry.smoke_env(registry.step_id == "run_06"), ...
+    "RUN06_CHUNK_RUN_MODE=smoke;RUN06_CHUNK_OUTPUT_DIR=derived/chunks_motif_discovery_smoke");
+verifyEqual(testCase, registry.full_env(registry.step_id == "run_06"), ...
+    "RUN06_CHUNK_RUN_MODE=full;RUN06_CHUNK_OUTPUT_DIR=derived/chunks_motif_discovery");
+verifyTrue(testCase, registry.smoke_safe(registry.step_id == "run_07"));
+verifyEqual(testCase, registry.smoke_env(registry.step_id == "run_07"), ...
+    "RUN07_EMBEDDING_RUN_MODE=smoke;RUN07_EMBEDDING_OUTPUT_DIR=derived/embedding_motif_discovery_smoke");
+verifyEqual(testCase, registry.full_env(registry.step_id == "run_07"), ...
+    "RUN07_EMBEDDING_RUN_MODE=full;RUN07_EMBEDDING_OUTPUT_DIR=derived/embedding_motif_discovery");
+verifyTrue(testCase, registry.smoke_safe(registry.step_id == "run_08"));
+verifyEqual(testCase, registry.smoke_env(registry.step_id == "run_08"), ...
+    "RUN08_GRAPH_RUN_MODE=smoke;RUN08_GRAPH_OUTPUT_DIR=derived/graph_motif_discovery_smoke;RUN08_EMBEDDING_INPUT_DIR=derived/embedding_motif_discovery_smoke");
+verifyEqual(testCase, registry.full_env(registry.step_id == "run_08"), ...
+    "RUN08_GRAPH_RUN_MODE=full;RUN08_GRAPH_OUTPUT_DIR=derived/graph_motif_discovery;RUN08_EMBEDDING_INPUT_DIR=derived/embedding_motif_discovery");
 end
 
 function testStepCallAuditToolExists(testCase)
