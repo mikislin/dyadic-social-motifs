@@ -1,11 +1,12 @@
-function Input = build_primary_scale_embedding_inputs(repoRoot, primaryScales, anchorManifest, eventSummary, transformAudit, featureDict, params)
+function Input = build_primary_scale_embedding_inputs(repoRoot, primaryScales, anchorManifest, eventSummary, transformAudit, featureDict, dimensionAudit, params)
 %BUILD_PRIMARY_SCALE_EMBEDDING_INPUTS Materialize run-07 summary matrices.
 %
 % This helper consumes the run_06 primary scale-specific anchor manifest.
 % Matrix construction uses feature MAT files, frame masks, run_06 transform
-% stats, and predefined configuration. Provenance labels are not used by this
-% loader; the embedding fitter strips condition/cohort-style labels before
-% saving row metadata and retains arena only for post-fit audit overlays.
+% stats, and the run_06 embedding_dimension_audit summary profiles.
+% Provenance labels are not used by this loader; the embedding fitter strips
+% condition/cohort-style labels before saving row metadata and retains arena
+% only for post-fit audit overlays.
 
 repoRoot = string(repoRoot);
 primaryScales = sortrows(primaryScales, 'chunk_sec');
@@ -24,7 +25,11 @@ Scale = repmat(struct( ...
     'rowMeta', table(), ...
     'X', [], ...
     'dimMeta', table(), ...
-    'summaryAudit', table()), nScale, 1);
+    'summaryAudit', table(), ...
+    'summary_profile', "", ...
+    'n_temporal_bins', [], ...
+    'n_dct_coeffs', [], ...
+    'n_summary_dims_run06', []), nScale, 1);
 
 rowManifest = table();
 featureRows = table();
@@ -38,22 +43,29 @@ for s = 1:nScale
     assert(~isempty(A), 'build_primary_scale_embedding_inputs:NoAnchorsForScale', ...
         'No run_07 anchors were available for scale_index=%g.', scaleIndex);
 
+    profile = local_summary_profile_for_scale(primaryScales(s, :), dimensionAudit, scaleIndex);
     [Sc, ChunkSet] = local_materialize_scale(repoRoot, A, stats, params);
     [Xsummary, dimMeta, summaryAudit] = summarize_multiresolution_chunks(Sc, ChunkSet, ...
         'featureNames', scoreFeatures, ...
-        'nTemporalBins', params.summary_temporal_bins, ...
-        'nDctCoeffs', params.summary_dct_coeffs, ...
+        'nTemporalBins', profile.n_temporal_bins, ...
+        'nDctCoeffs', profile.n_dct_coeffs, ...
         'includeDct', params.summary_include_dct, ...
         'useScaledFeatures', params.summary_use_scaled_features);
+    summaryAudit = local_annotate_summary_audit(summaryAudit, profile);
     dimMeta = local_add_feature_metadata(dimMeta, featureDict);
+    dimMeta = local_add_profile_metadata(dimMeta, profile, "run06_multiresolution_summary_profile");
 
     [Xevent, eventDimMeta] = local_event_feature_matrix(A, eventSummary, params);
+    eventProfile = local_event_summary_profile(size(Xevent, 2));
+    eventDimMeta = local_add_profile_metadata(eventDimMeta, eventProfile, "event_summary_separate_profile");
     if ~isempty(eventDimMeta)
         eventDimMeta.summary_dim_index = eventDimMeta.summary_dim_index + size(Xsummary, 2);
     end
 
     X = [double(Xsummary), double(Xevent)];
-    dimMeta = [dimMeta; eventDimMeta]; %#ok<AGROW>
+    if ~isempty(eventDimMeta)
+        dimMeta = [dimMeta; eventDimMeta]; %#ok<AGROW>
+    end
     dimMeta.embedding_feature_index = (1:height(dimMeta))';
     dimMeta = movevars(dimMeta, 'embedding_feature_index', 'Before', 1);
 
@@ -73,13 +85,17 @@ for s = 1:nScale
     Scale(s).X = X;
     Scale(s).dimMeta = dimMeta;
     Scale(s).summaryAudit = summaryAudit;
+    Scale(s).summary_profile = profile.summary_profile;
+    Scale(s).n_temporal_bins = profile.n_temporal_bins;
+    Scale(s).n_dct_coeffs = profile.n_dct_coeffs;
+    Scale(s).n_summary_dims_run06 = profile.n_summary_dims;
 
     dimOut = dimMeta;
     dimOut.scale_index = repmat(scaleIndex, height(dimOut), 1);
     dimOut.chunk_sec = repmat(double(primaryScales.chunk_sec(s)), height(dimOut), 1);
     featureRows = [featureRows; dimOut]; %#ok<AGROW>
     rowManifest = [rowManifest; A]; %#ok<AGROW>
-    matrixAudit = [matrixAudit; local_matrix_audit(Scale(s), X, Xsummary, Xevent)]; %#ok<AGROW>
+    matrixAudit = [matrixAudit; local_matrix_audit(Scale(s), X, Xsummary, Xevent, profile)]; %#ok<AGROW>
 end
 
 Input = struct();
@@ -90,6 +106,84 @@ Input.matrixAudit = matrixAudit;
 Input.labels_used_for_matrix = "none";
 Input.arena_used_for_matrix = false;
 Input.condition_used_for_matrix = false;
+end
+
+function profile = local_summary_profile_for_scale(scaleRow, dimensionAudit, scaleIndex)
+required = ["scale_index", "summary_profile", "n_temporal_bins", "n_dct_coeffs", "n_summary_dims"];
+missing = setdiff(required, string(dimensionAudit.Properties.VariableNames));
+assert(isempty(missing), 'build_primary_scale_embedding_inputs:BadDimensionAudit', ...
+    'embedding_dimension_audit missing required columns: %s', strjoin(missing, ', '));
+
+row = find(double(dimensionAudit.scale_index) == double(scaleIndex), 1);
+assert(~isempty(row), 'build_primary_scale_embedding_inputs:MissingSummaryProfile', ...
+    'Missing embedding_dimension_audit summary profile for scale_index=%g.', scaleIndex);
+
+profile = struct();
+profile.summary_profile = string(dimensionAudit.summary_profile(row));
+profile.n_temporal_bins = double(dimensionAudit.n_temporal_bins(row));
+profile.n_dct_coeffs = double(dimensionAudit.n_dct_coeffs(row));
+profile.n_summary_dims = double(dimensionAudit.n_summary_dims(row));
+profile.profile_source = "run06_embedding_dimension_audit.csv";
+profile.temporal_band = local_table_string(dimensionAudit, 'initial_band', row, "");
+if profile.temporal_band == ""
+    profile.temporal_band = local_table_string(scaleRow, 'hierarchical_role', 1, "");
+end
+
+assert(profile.summary_profile ~= "" && ~ismissing(profile.summary_profile) && ...
+        isfinite(profile.n_temporal_bins) && profile.n_temporal_bins >= 1 && ...
+        isfinite(profile.n_dct_coeffs) && profile.n_dct_coeffs >= 0 && ...
+        isfinite(profile.n_summary_dims) && profile.n_summary_dims >= 1, ...
+    'build_primary_scale_embedding_inputs:BadSummaryProfile', ...
+    'Invalid run_06 summary profile for scale_index=%g.', scaleIndex);
+
+switch profile.temporal_band
+    case "motif"
+        assert(profile.n_temporal_bins == 12 && profile.n_dct_coeffs == 8, ...
+            'build_primary_scale_embedding_inputs:BadMotifSummaryProfile', ...
+            'Motif scale_index=%g must inherit 12 temporal bins and 8 DCT coefficients.', scaleIndex);
+    case {"micro", "context"}
+        assert(profile.n_temporal_bins == 6 && profile.n_dct_coeffs == 4, ...
+            'build_primary_scale_embedding_inputs:BadBaseSummaryProfile', ...
+            '%s scale_index=%g must inherit 6 temporal bins and 4 DCT coefficients.', ...
+            profile.temporal_band, scaleIndex);
+end
+end
+
+function audit = local_annotate_summary_audit(audit, profile)
+assert(double(audit.n_temporal_bins(1)) == profile.n_temporal_bins && ...
+        double(audit.n_dct_coeffs(1)) == profile.n_dct_coeffs && ...
+        double(audit.n_summary_dims(1)) == profile.n_summary_dims, ...
+    'build_primary_scale_embedding_inputs:SummaryDimensionMismatch', ...
+    ['Generated summary profile %s produced bins=%g dct=%g dims=%g, ' ...
+    'but run_06 embedding_dimension_audit expected bins=%g dct=%g dims=%g.'], ...
+    profile.summary_profile, double(audit.n_temporal_bins(1)), ...
+    double(audit.n_dct_coeffs(1)), double(audit.n_summary_dims(1)), ...
+    profile.n_temporal_bins, profile.n_dct_coeffs, profile.n_summary_dims);
+audit.summary_profile = profile.summary_profile;
+audit.summary_profile_source = profile.profile_source;
+audit.expected_n_summary_dims_from_run06 = profile.n_summary_dims;
+end
+
+function dimMeta = local_add_profile_metadata(dimMeta, profile, role)
+if isempty(dimMeta)
+    return
+end
+n = height(dimMeta);
+dimMeta.summary_profile = repmat(string(profile.summary_profile), n, 1);
+dimMeta.summary_profile_role = repmat(string(role), n, 1);
+dimMeta.summary_profile_source = repmat(string(profile.profile_source), n, 1);
+dimMeta.n_temporal_bins = repmat(double(profile.n_temporal_bins), n, 1);
+dimMeta.n_dct_coeffs = repmat(double(profile.n_dct_coeffs), n, 1);
+dimMeta.n_summary_dims = repmat(double(profile.n_summary_dims), n, 1);
+end
+
+function profile = local_event_summary_profile(nDims)
+profile = struct();
+profile.summary_profile = "event_summary_channels_separate";
+profile.profile_source = "primary_chunk_event_summary_audit.csv";
+profile.n_temporal_bins = NaN;
+profile.n_dct_coeffs = NaN;
+profile.n_summary_dims = double(nDims);
 end
 
 function [Sc, ChunkSet] = local_materialize_scale(repoRoot, A, stats, params)
@@ -218,10 +312,10 @@ dimMeta.chunk_sec = repmat(double(A.chunk_sec(1)), n, 1);
 dimMeta.obs_name = eventNames(:);
 dimMeta.base_feature = eventNames(:);
 dimMeta.channel_type = repmat("event_summary", n, 1);
-dimMeta.summary_kind = repmat("primary_event_summary", n, 1);
+dimMeta.summary_kind = repmat("condition_blind_event_summary", n, 1);
 dimMeta.temporal_bin = nan(n, 1);
 dimMeta.dct_coefficient = nan(n, 1);
-dimMeta.source_tensor = repmat("primary_chunk_event_summary_audit", n, 1);
+dimMeta.source_tensor = repmat("run06_condition_blind_chunk_event_summary_audit", n, 1);
 dimMeta.mean_frame_valid_fraction_for_channel = repmat(mean(E.event_valid_fraction, 'omitnan'), n, 1);
 dimMeta.uses_frame_mask = true(n, 1);
 dimMeta.labels_used_for_summary = repmat("none", n, 1);
@@ -230,7 +324,11 @@ dimMeta.unit = local_event_units(eventNames);
 end
 
 function E = local_match_event_rows(A, eventSummary)
-if ismember('primary_anchor_global_id', A.Properties.VariableNames) && ...
+if ismember('expanded_anchor_global_id', A.Properties.VariableNames) && ...
+        ismember('expanded_anchor_global_id', eventSummary.Properties.VariableNames) && ...
+        all(isfinite(double(A.expanded_anchor_global_id)))
+    [tf, loc] = ismember(A.expanded_anchor_global_id, eventSummary.expanded_anchor_global_id);
+elseif ismember('primary_anchor_global_id', A.Properties.VariableNames) && ...
         ismember('primary_anchor_global_id', eventSummary.Properties.VariableNames)
     [tf, loc] = ismember(A.primary_anchor_global_id, eventSummary.primary_anchor_global_id);
 else
@@ -239,7 +337,7 @@ else
     [tf, loc] = ismember(keyA, keyE);
 end
 assert(all(tf), 'build_primary_scale_embedding_inputs:EventRowsMissing', ...
-    'Primary event summary rows could not be matched to selected anchors.');
+    'Condition-blind event summary rows could not be matched to selected anchors.');
 E = eventSummary(loc, :);
 end
 
@@ -293,13 +391,17 @@ for i = 1:height(dimMeta)
 end
 end
 
-function audit = local_matrix_audit(S, X, Xsummary, Xevent)
+function audit = local_matrix_audit(S, X, Xsummary, Xevent, profile)
 audit = table();
 audit.scale_index = S.scale_index;
 audit.chunk_sec = S.chunk_sec;
 audit.hierarchical_role = string(S.hierarchical_role);
+audit.summary_profile = profile.summary_profile;
+audit.n_temporal_bins = profile.n_temporal_bins;
+audit.n_dct_coeffs = profile.n_dct_coeffs;
 audit.n_rows = size(X, 1);
 audit.n_multiresolution_dims = size(Xsummary, 2);
+audit.run06_expected_multiresolution_dims = profile.n_summary_dims;
 audit.n_event_summary_dims = size(Xevent, 2);
 audit.n_total_dims = size(X, 2);
 audit.finite_value_fraction = mean(isfinite(X), 'all');

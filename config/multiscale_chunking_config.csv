@@ -1,6 +1,27 @@
 parameter,value,type,env_override,description
 run_mode,smoke,string,RUN06_CHUNK_RUN_MODE,Run mode for run_06: smoke or full.
 output_dir,derived/chunks_motif_discovery_smoke,string,RUN06_CHUNK_OUTPUT_DIR,Output directory relative to repo root for chunk and scale audit outputs.
+anchor_manifest_mode,primary,string,RUN06_ANCHOR_MANIFEST_MODE,Run_06 anchor-bank mode: primary preserves the unbiased baseline path; rare_enriched reads locked baseline outputs and writes a separate expanded bank.
+baseline_chunk_input_dir,derived/chunks_motif_discovery,string,RUN06_BASELINE_CHUNK_INPUT_DIR,Locked unbiased run_06 root used only by rare_enriched mode.
+baseline_graph_input_dir,derived/graph_motif_discovery,string,RUN06_BASELINE_GRAPH_INPUT_DIR,Locked unbiased run_08 root containing condition-blind rare-strata definitions and seeds.
+rare_enriched_target_anchors_per_scale,4000,number,RUN06_RARE_TARGET_ANCHORS_PER_SCALE,Pilot expanded-bank target per primary scale including retained baseline anchors.
+rare_enriched_seed_radius_sec,1.0,number,RUN06_RARE_SEED_RADIUS_SEC,Maximum temporal distance around a baseline graph rare-stratum seed used for condition-blind candidate enrichment.
+rare_enriched_undercovered_candidates_per_cell,32,number,RUN06_RARE_UNDERCOVERED_CANDIDATES_PER_CELL,Time-even candidate cap retained from each under-covered scale-session cell.
+rare_quota_contact_transition,0.18,number,RUN06_RARE_QUOTA_CONTACT_TRANSITION,Fraction of rare additions reserved first for contact-transition candidates.
+rare_quota_contact_present,0.18,number,RUN06_RARE_QUOTA_CONTACT_PRESENT,Fraction of rare additions reserved for contact-present candidates.
+rare_quota_large_heading_turn,0.14,number,RUN06_RARE_QUOTA_LARGE_HEADING_TURN,Fraction of rare additions reserved for large-heading-turn candidates.
+rare_quota_low_density_tail,0.10,number,RUN06_RARE_QUOTA_LOW_DENSITY,Fraction of rare additions reserved for temporal neighborhoods of low-density graph seeds.
+rare_quota_graph_periphery,0.10,number,RUN06_RARE_QUOTA_GRAPH_PERIPHERY,Fraction of rare additions reserved for temporal neighborhoods of graph-periphery seeds.
+rare_quota_high_radial_speed,0.15,number,RUN06_RARE_QUOTA_HIGH_RADIAL_SPEED,Fraction of rare additions reserved for high-radial-speed candidates.
+rare_quota_short_motif_instability,0.07,number,RUN06_RARE_QUOTA_SHORT_INSTABILITY,Fraction of rare additions reserved for short motif-instability seed neighborhoods.
+rare_quota_undercovered_scale_session,0.08,number,RUN06_RARE_QUOTA_UNDERCOVERED,Fraction of rare additions reserved for under-covered scale-session cells.
+rare_strata_definition_file,rare_strata_definition.csv,string,,Condition-blind rare-strata definition file inside baseline_graph_input_dir.
+rare_strata_seed_manifest_file,rare_strata_seed_anchor_manifest.csv,string,,Condition-blind rare-strata seed manifest inside baseline_graph_input_dir.
+expanded_anchor_manifest_file,expanded_primary_anchor_manifest.csv,string,,Expanded rare-enriched anchor manifest written in rare_enriched mode.
+expanded_chunk_bank_summary_file,expanded_primary_anchor_bank_summary.csv,string,,Expanded rare-enriched bank summary written in rare_enriched mode.
+expanded_weight_audit_file,expanded_anchor_inclusion_weight_audit.csv,string,,Row-level inclusion probability and weight audit written in rare_enriched mode.
+rare_strata_sampling_summary_file,rare_strata_sampling_summary.csv,string,,Per-scale and per-stratum sampling summary written in rare_enriched mode.
+expanded_event_summary_file,expanded_primary_chunk_event_summary_audit.csv,string,,Condition-blind event summaries for all expanded anchors.
 allow_smoke_production_output,false,logical,RUN06_ALLOW_SMOKE_PRODUCTION_OUTPUT,Allow smoke mode to write to the production chunk output directory; default false prevents accidental overwrite-like smoke artifacts.
 feature_output_dir,derived/features_motif_discovery,string,RUN06_FEATURE_OUTPUT_DIR,Run_05 feature output directory relative to repo root.
 feature_session_audit_file,feature_extraction_session_audit.csv,string,,Run_05 session audit file name inside feature_output_dir.

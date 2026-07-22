@@ -19,6 +19,12 @@
 %     setenv('RUN08_FIGURE_EXPORT_PNG','false');
 %     setenv('RUN08_FIGURE_EXPORT_PDF','false');
 
+% setenv('RUN08_ANCHOR_MANIFEST_MODE','rare_enriched');
+% setenv('RUN08_GRAPH_RUN_MODE','full');
+% setenv('RUN08_GRAPH_OUTPUT_DIR','');
+% setenv('RUN08_EMBEDDING_INPUT_DIR','');
+% run('run_08_build_condition_blind_motif_graph.m');
+
 repoRoot = fileparts(fileparts(mfilename('fullpath')));
 cd(repoRoot);
 addpath(genpath(repoRoot));

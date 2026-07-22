@@ -1,6 +1,7 @@
 parameter,value,type,env_override,description
 run_mode,smoke,string,RUN07_EMBEDDING_RUN_MODE,Run mode for run_07: smoke or full.
 output_dir,derived/embedding_motif_discovery_smoke,string,RUN07_EMBEDDING_OUTPUT_DIR,Output directory relative to repo root for embedding outputs.
+anchor_manifest_mode,primary,string,RUN07_ANCHOR_MANIFEST_MODE,Run_07 anchor input mode: primary preserves the baseline path and rare_enriched reads the separate expanded run_06 bank.
 chunk_input_dir,derived/chunks_motif_discovery,string,RUN07_CHUNK_INPUT_DIR,Preferred run_06 production output directory containing primary scale-specific bank outputs.
 fallback_chunk_input_dir,derived/chunks_motif_discovery_scale_survey_multires_v1,string,RUN07_FALLBACK_CHUNK_INPUT_DIR,Reviewed run_06 scale-survey snapshot used only if chunk_input_dir lacks required primary outputs.
 allow_reviewed_snapshot_fallback,true,logical,RUN07_ALLOW_REVIEWED_SNAPSHOT_FALLBACK,Allow explicit fallback to the reviewed run_06 snapshot when production primary outputs are absent.
@@ -11,6 +12,11 @@ primary_scales_file,primary_operational_scales.csv,string,,Run_06 primary operat
 primary_anchor_manifest_file,primary_scale_specific_anchor_manifest.csv,string,,Run_06 primary scale-specific anchor manifest file name.
 primary_chunk_bank_summary_file,primary_scale_specific_chunk_bank_summary.csv,string,,Run_06 primary scale-specific chunk bank summary file name.
 primary_event_summary_file,primary_chunk_event_summary_audit.csv,string,,Run_06 primary chunk event summary audit file name.
+expanded_anchor_manifest_file,expanded_primary_anchor_manifest.csv,string,,Run_06 expanded rare-enriched anchor manifest file name.
+expanded_chunk_bank_summary_file,expanded_primary_anchor_bank_summary.csv,string,,Run_06 expanded rare-enriched bank summary file name.
+expanded_event_summary_file,expanded_primary_chunk_event_summary_audit.csv,string,,Run_06 condition-blind event summary file for expanded anchors.
+expanded_weight_audit_file,expanded_anchor_inclusion_weight_audit.csv,string,,Run_06 expanded inclusion-probability and weight audit file.
+rare_strata_sampling_summary_file,rare_strata_sampling_summary.csv,string,,Run_06 per-scale rare-strata eligibility and sampling audit file.
 embedding_dimension_audit_file,embedding_dimension_audit.csv,string,,Run_06 embedding dimension audit file name.
 pca_loading_stability_file,pca_loading_stability.csv,string,,Run_06 PCA loading stability audit file name.
 arena_sensitivity_audit_file,arena_sensitivity_audit.csv,string,,Run_06 arena sensitivity audit file name.
@@ -23,15 +29,19 @@ anchor_mode,past,string,RUN07_ANCHOR_MODE,Chunk geometry inherited from run_06 p
 smoke_max_anchors_per_scale,128,number,RUN07_SMOKE_MAX_ANCHORS_PER_SCALE,Maximum primary anchors per scale used in smoke mode.
 max_anchors_per_scale,NaN,number,RUN07_MAX_ANCHORS_PER_SCALE,Maximum primary anchors per scale used in full mode; NaN means use all primary anchors.
 min_smoke_anchors_per_session,1,number,RUN07_MIN_SMOKE_ANCHORS_PER_SESSION,Minimum deterministic per-session coverage before smoke global fill when capacity allows.
-summary_temporal_bins,6,number,RUN07_SUMMARY_TEMPORAL_BINS,Number of equal temporal bins per channel in multiresolution summaries.
-summary_dct_coeffs,4,number,RUN07_SUMMARY_DCT_COEFFS,Number of low-frequency DCT coefficients per channel in multiresolution summaries.
+summary_temporal_bins,6,number,RUN07_SUMMARY_TEMPORAL_BINS,Legacy fallback only; run_07 inherits per-scale temporal bins from run_06 embedding_dimension_audit.csv.
+summary_dct_coeffs,4,number,RUN07_SUMMARY_DCT_COEFFS,Legacy fallback only; run_07 inherits per-scale DCT coefficients from run_06 embedding_dimension_audit.csv.
 summary_include_dct,true,logical,RUN07_SUMMARY_INCLUDE_DCT,Include low-frequency DCT coefficients in multiresolution summaries.
 summary_use_scaled_features,true,logical,RUN07_SUMMARY_USE_SCALED_FEATURES,Use condition-blind scaled run_06 channels for multiresolution summaries.
-include_event_summary_features,true,logical,RUN07_INCLUDE_EVENT_SUMMARY_FEATURES,Append primary event-summary channels as auditable social-detail features.
+include_event_summary_features,true,logical,RUN07_INCLUDE_EVENT_SUMMARY_FEATURES,Append the active condition-blind run_06 event-summary channels as auditable social-detail features.
 event_summary_feature_names,all,string_list,RUN07_EVENT_SUMMARY_FEATURE_NAMES,Event summary columns to append; all uses the predefined non-label numeric event channels.
 preprocess_winsor_low,0.005,number,RUN07_PREPROCESS_WINSOR_LOW,Lower winsor quantile before PCA.
 preprocess_winsor_high,0.995,number,RUN07_PREPROCESS_WINSOR_HIGH,Upper winsor quantile before PCA.
 preprocess_min_robust_scale,1e-8,number,RUN07_PREPROCESS_MIN_ROBUST_SCALE,Minimum robust spread required before a matrix column or PC score can be standardized.
+preprocess_sparse_scale_safeguard_enabled,true,logical,RUN07_PREPROCESS_SPARSE_SCALE_SAFEGUARD_ENABLED,Use winsorized standard deviation when a positive IQR is pathologically small relative to winsorized standard deviation.
+preprocess_min_iqr_to_std_ratio,0.15,number,RUN07_PREPROCESS_MIN_IQR_TO_STD_RATIO,Condition-blind minimum winsorized IQR-to-standard-deviation ratio required to retain IQR scaling; this bounds IQR-induced SD amplification below approximately 6.67.
+preprocess_tail_audit_abs_threshold,10,number,RUN07_PREPROCESS_TAIL_AUDIT_ABS_THRESHOLD,Absolute standardized-value threshold reported in the per-dimension preprocessing tail audit.
+preprocess_severe_tail_audit_abs_threshold,100,number,RUN07_PREPROCESS_SEVERE_TAIL_AUDIT_ABS_THRESHOLD,Severe absolute standardized-value threshold reported in the per-dimension preprocessing tail audit.
 min_pcs_per_scale,2,number,RUN07_MIN_PCS_PER_SCALE,Minimum PCs retained per scale when enough rows and dimensions exist.
 micro_max_pcs,24,number,RUN07_MICRO_MAX_PCS,Predefined run_07 cap for micro-scale PCs.
 motif_max_pcs,48,number,RUN07_MOTIF_MAX_PCS,Predefined run_07 cap for motif-scale PCs.
@@ -41,9 +51,11 @@ global_matrix_mode,ordinal_pc_stack,string,RUN07_GLOBAL_MATRIX_MODE,How scale-sp
 standardize_scale_scores_before_global,true,logical,RUN07_STANDARDIZE_SCALE_SCORES,Robust-standardize per-scale PC scores before applying scale weights.
 scale_score_winsor_abs,8,number,RUN07_SCALE_SCORE_WINSOR_ABS,Condition-blind absolute cap on robust-standardized per-scale PC scores before scale weighting and global PCA.
 scale_weight_mode,equal_total_weight,string,RUN07_SCALE_WEIGHT_MODE,Scale weight rule: equal_total_weight or none.
+use_anchor_weights_for_pca,false,logical,RUN07_USE_ANCHOR_WEIGHTS_FOR_PCA,Initial enriched analysis remains unweighted; inclusion weights are propagated for audit only.
 stability_splits,12,number,RUN07_STABILITY_SPLITS,Full-mode split-half PCA stability repeats.
 smoke_stability_splits,4,number,RUN07_SMOKE_STABILITY_SPLITS,Smoke-mode split-half PCA stability repeats.
 stability_n_pcs_compared,12,number,RUN07_STABILITY_N_PCS_COMPARED,Maximum PCs compared in split-half stability audits.
+enrichment_sensitivity_n_pcs_compared,12,number,RUN07_ENRICHMENT_SENSITIVITY_N_PCS_COMPARED,Maximum PCs compared among combined base-only and rare-enriched condition-blind PCA sensitivity fits.
 arena_sensitivity_n_pcs,4,number,RUN07_ARENA_SENSITIVITY_N_PCS,Number of per-scale PCs used for post-fit arena sensitivity audit.
 rng_seed,707,number,RUN07_RNG_SEED,Random seed for condition-blind stability splits and reproducible PCA audits.
 figure_export_png,true,logical,RUN07_FIGURE_EXPORT_PNG,Write PNG copies of run_07 QC figures.
@@ -51,7 +63,7 @@ figure_export_pdf,true,logical,RUN07_FIGURE_EXPORT_PDF,Write PDF copies of run_0
 figure_dpi,320,number,RUN07_FIGURE_DPI,PNG export resolution for run_07 QC figures.
 figure_font_name,Arial,string,RUN07_FIGURE_FONT_NAME,Figure font name.
 figure_font_size,9,number,RUN07_FIGURE_FONT_SIZE,Base figure font size.
-selection_rule,primary_scale_specific_anchor_manifest rows from run_06 primary bank only; deterministic smoke/full caps use time/session indices only,string,,Run_07 anchor inclusion rule; no condition cohort arena drug genotype or outcome labels.
+selection_rule,active primary or rare_enriched run_06 anchor manifest; deterministic smoke/full caps use time/session indices only,string,,Run_07 anchor inclusion rule; no condition cohort arena drug genotype or outcome labels.
 embedding_dimension_rule,run_06 embedding_dimension_audit recommended_pcs_for_next_embedding with predefined run_07 role caps,string,,Per-scale PCA dimensionality rule.
 scale_weight_rule,condition-blind per-scale PCA scores are robust-standardized and weighted by predefined scale_weight_mode,string,,Scale weighting rule; no labels enter weights.
 label_exclusion_rule,no condition cohort group drug genotype outcome or arena labels enter PCA global PCA scale weights stability or matrix construction,string,,Non-bypassable label exclusion rule for run_07.

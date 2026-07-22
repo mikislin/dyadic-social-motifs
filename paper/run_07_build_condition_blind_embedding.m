@@ -17,6 +17,12 @@
 %     setenv('RUN07_FIGURE_EXPORT_PNG','false');
 %     setenv('RUN07_FIGURE_EXPORT_PDF','false');
 
+% setenv('RUN07_ANCHOR_MANIFEST_MODE','rare_enriched');
+% setenv('RUN07_EMBEDDING_RUN_MODE','full');
+% setenv('RUN07_EMBEDDING_OUTPUT_DIR','');
+% setenv('RUN07_CHUNK_INPUT_DIR','');
+% run('run_07_build_condition_blind_embedding.m');
+
 repoRoot = fileparts(fileparts(mfilename('fullpath')));
 cd(repoRoot);
 addpath(genpath(repoRoot));

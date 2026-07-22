@@ -30,6 +30,30 @@ rows = local_add_figure(rows, local_plot_k_sensitivity(outRoot, style), ...
 rows = local_add_figure(rows, local_plot_event_coverage(outRoot, style), ...
     fullfile(outRoot, 'graph_rare_event_coverage_audit.csv'), ...
     "post-fit rare and social event coverage audit");
+rows = local_add_figure(rows, local_plot_scale_mixing(outRoot, style), ...
+    fullfile(outRoot, 'graph_scale_mixing_matrix_audit.csv'), ...
+    "complete directed scale-mixing matrix with random-mixing normalization");
+rows = local_add_figure(rows, local_plot_global_pca_density(outRoot, style), ...
+    string(fullfile(outRoot, 'graph_node_manifest.csv')) + ";" + ...
+    string(fullfile(outRoot, 'graph_global_pca_cumulative_variance_audit.csv')), ...
+    "global PCA density, scale-dependent dispersion, and cumulative variance audit");
+rows = local_add_figure(rows, local_plot_global_pca_3d(outRoot, style), ...
+    fullfile(outRoot, 'graph_node_manifest.csv'), ...
+    "three-dimensional global PCA visualization audit; not a motif definition");
+rows = local_add_figure(rows, local_plot_event_prevalence_fold(outRoot, style), ...
+    fullfile(outRoot, 'graph_event_prevalence_fold_audit.csv'), ...
+    "baseline-versus-enriched event prevalence and fold-enrichment audit");
+rows = local_add_figure(rows, local_plot_umap_2d(outRoot, style), ...
+    fullfile(outRoot, 'graph_umap_embedding_audit.csv'), ...
+    "deterministic condition-blind UMAP 2D visualization audit only");
+rows = local_add_figure(rows, local_plot_umap_3d(outRoot, style), ...
+    fullfile(outRoot, 'graph_umap_embedding_audit.csv'), ...
+    "deterministic condition-blind UMAP 3D visualization audit only");
+rows = local_add_figure(rows, local_plot_sensitivity_overview(outRoot, style), ...
+    string(fullfile(outRoot, 'graph_anchor_stage_sensitivity_audit.csv')) + ";" + ...
+    string(fullfile(outRoot, 'graph_session_excluded_sensitivity_audit.csv')) + ";" + ...
+    string(fullfile(outRoot, 'graph_neighborhood_resampling_audit.csv')), ...
+    "anchor-stage, session-exclusion, and neighborhood-resampling sensitivity audit");
 
 figureManifest = rows;
 end
@@ -287,6 +311,287 @@ files = local_export(fig, fullfile(outRoot, 'figures'), ...
 close(fig);
 end
 
+function files = local_plot_scale_mixing(outRoot, style)
+pathText = fullfile(outRoot, 'graph_scale_mixing_matrix_audit.csv');
+if ~isfile(pathText)
+    files = strings(0, 1);
+    return
+end
+T = local_read_csv(pathText);
+scales = unique(double(T.source_chunk_sec), 'stable');
+M = nan(numel(scales));
+for i = 1:numel(scales)
+    for j = 1:numel(scales)
+        idx = double(T.source_chunk_sec) == scales(i) & double(T.target_chunk_sec) == scales(j);
+        if any(idx)
+            M(i, j) = log2(max(double(T.observed_over_random_ratio(find(idx, 1))), eps));
+        end
+    end
+end
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 980 820]);
+imagesc(M);
+axis square;
+set(gca, 'YTick', 1:numel(scales), 'YTickLabel', compose('%.3g', scales), ...
+    'XTick', 1:numel(scales), 'XTickLabel', compose('%.3g', scales));
+xtickangle(45);
+xlabel('Target chunk scale (s)', 'Interpreter', 'none');
+ylabel('Source chunk scale (s)', 'Interpreter', 'none');
+title('Scale mixing: log_2(observed / random expectation)', 'Interpreter', 'tex');
+cb = colorbar;
+cb.Label.String = 'log_2 enrichment';
+local_format_axis(gca, style);
+files = local_export(fig, fullfile(outRoot, 'figures'), ...
+    'graph_scale_mixing_matrix_audit', style);
+close(fig);
+end
+
+function files = local_plot_global_pca_density(outRoot, style)
+nodePath = fullfile(outRoot, 'graph_node_manifest.csv');
+variancePath = fullfile(outRoot, 'graph_global_pca_cumulative_variance_audit.csv');
+if ~(isfile(nodePath) && isfile(variancePath))
+    files = strings(0, 1);
+    return
+end
+N = local_read_csv(nodePath);
+V = local_read_csv(variancePath);
+if ~all(ismember({'graph_plot_pc1','graph_plot_pc2'}, N.Properties.VariableNames))
+    files = strings(0, 1);
+    return
+end
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [40 80 1800 620]);
+tiledlayout(fig, 1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+nexttile;
+histogram2(double(N.graph_plot_pc1), double(N.graph_plot_pc2), [110 110], ...
+    'DisplayStyle', 'tile', 'ShowEmptyBins', 'off');
+view(2);
+set(gca, 'ColorScale', 'log');
+colorbar;
+xlabel('Global PC1'); ylabel('Global PC2');
+title('Point density (all graph nodes)');
+local_format_axis(gca, style);
+
+nexttile;
+scales = unique(double(N.chunk_sec), 'stable');
+medRadius = nan(size(scales));
+p90Radius = nan(size(scales));
+r = hypot(double(N.graph_plot_pc1), double(N.graph_plot_pc2));
+for i = 1:numel(scales)
+    idx = double(N.chunk_sec) == scales(i);
+    medRadius(i) = median(r(idx), 'omitnan');
+    p90Radius(i) = quantile(r(idx), 0.90);
+end
+semilogx(scales, medRadius, '-o', 'Color', style.blue, 'LineWidth', 1.5, ...
+    'MarkerFaceColor', style.blue); hold on;
+semilogx(scales, p90Radius, '-s', 'Color', style.gold, 'LineWidth', 1.5, ...
+    'MarkerFaceColor', style.gold);
+xlabel('Chunk scale (s)'); ylabel('Radius in displayed PC1-PC2 plane');
+title('Scale-dependent projected dispersion');
+legend({'Median radius','90th percentile'}, 'Location', 'best', 'Box', 'off');
+local_format_axis(gca, style);
+
+nexttile;
+plot(double(V.global_pc_index), double(V.cumulative_explained_variance_percent), ...
+    '-', 'Color', style.purple, 'LineWidth', 1.8); hold on;
+xline(2, ':', 'PC2');
+lastGraph = max(double(V.global_pc_index(logical(V.selected_for_run08_graph))));
+xline(lastGraph, '--', sprintf('Graph PC%d', lastGraph));
+yline(100, ':');
+xlabel('Number of global PCs'); ylabel('Cumulative explained variance (%)');
+title('Displayed axes versus graph input');
+xlim([1 max(double(V.global_pc_index))]); ylim([0 101]);
+local_format_axis(gca, style);
+
+files = local_export(fig, fullfile(outRoot, 'figures'), ...
+    'graph_global_pca_density_variance_audit', style);
+close(fig);
+end
+
+function files = local_plot_global_pca_3d(outRoot, style)
+pathText = fullfile(outRoot, 'graph_node_manifest.csv');
+if ~isfile(pathText)
+    files = strings(0, 1);
+    return
+end
+N = local_read_csv(pathText);
+if ~all(ismember({'graph_plot_pc1','graph_plot_pc2','graph_plot_pc3'}, N.Properties.VariableNames))
+    files = strings(0, 1);
+    return
+end
+idx = local_plot_sample(height(N), 12000, 108);
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 1100 860]);
+scatter3(double(N.graph_plot_pc1(idx)), double(N.graph_plot_pc2(idx)), ...
+    double(N.graph_plot_pc3(idx)), 8, log10(double(N.chunk_sec(idx))), 'filled');
+xlabel('Global PC1'); ylabel('Global PC2'); zlabel('Global PC3');
+title('Global PCA 3D audit (visualization only)');
+cb = colorbar; cb.Label.String = 'log_{10} chunk scale (s)';
+view(42, 24);
+axis vis3d;
+local_format_axis(gca, style);
+files = local_export(fig, fullfile(outRoot, 'figures'), ...
+    'graph_global_pca_3d_audit', style);
+close(fig);
+end
+
+function files = local_plot_event_prevalence_fold(outRoot, style)
+pathText = fullfile(outRoot, 'graph_event_prevalence_fold_audit.csv');
+if ~isfile(pathText)
+    files = strings(0, 1);
+    return
+end
+T = local_read_csv(pathText);
+T = T(string(T.aggregation_scope) == "all_scales", :);
+if isempty(T)
+    files = strings(0, 1);
+    return
+end
+events = local_clean_label(string(T.event_id));
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [40 80 1700 760]);
+tiledlayout(fig, 1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+nexttile;
+barh(1:height(T), [double(T.baseline_prevalence), double(T.current_prevalence)]);
+set(gca, 'XScale', 'log', 'YTick', 1:height(T), 'YTickLabel', events, ...
+    'TickLabelInterpreter', 'none', 'YDir', 'reverse');
+xlabel('Event prevalence'); ylabel('Event audit');
+title('Baseline and rare-enriched bank prevalence');
+legend({'Baseline primary','Rare enriched'}, 'Location', 'southoutside', ...
+    'Orientation', 'horizontal', 'Box', 'off');
+local_format_axis(gca, style);
+nexttile;
+barh(1:height(T), double(T.log2_prevalence_fold), 'FaceColor', style.green);
+xline(0, ':');
+set(gca, 'YTick', 1:height(T), 'YTickLabel', events, ...
+    'TickLabelInterpreter', 'none', 'YDir', 'reverse');
+xlabel('log_2 enriched / baseline prevalence'); ylabel('Event audit');
+title('Prevalence fold enrichment (half-count stabilized)');
+local_format_axis(gca, style);
+files = local_export(fig, fullfile(outRoot, 'figures'), ...
+    'graph_event_prevalence_fold_audit', style);
+close(fig);
+end
+
+function files = local_plot_umap_2d(outRoot, style)
+pathText = fullfile(outRoot, 'graph_umap_embedding_audit.csv');
+if ~isfile(pathText)
+    files = strings(0, 1);
+    return
+end
+U = local_read_csv(pathText);
+if isempty(U)
+    files = strings(0, 1);
+    return
+end
+idx = local_plot_sample(height(U), 14000, 108);
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [40 80 1500 680]);
+tiledlayout(fig, 1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+nexttile;
+histogram2(double(U.umap2_x), double(U.umap2_y), [120 120], ...
+    'DisplayStyle', 'tile', 'ShowEmptyBins', 'off');
+view(2); set(gca, 'ColorScale', 'log'); colorbar;
+xlabel('UMAP 1'); ylabel('UMAP 2'); title('UMAP 2D density');
+local_format_axis(gca, style);
+nexttile;
+scatter(double(U.umap2_x(idx)), double(U.umap2_y(idx)), 8, ...
+    log10(double(U.chunk_sec(idx))), 'filled');
+xlabel('UMAP 1'); ylabel('UMAP 2'); title('UMAP 2D colored by chunk scale');
+cb = colorbar; cb.Label.String = 'log_{10} chunk scale (s)';
+local_format_axis(gca, style);
+sgtitle('Condition-blind UMAP audit: visualization only, not motif evidence', ...
+    'FontName', style.fontName, 'FontSize', style.titleFontSize);
+files = local_export(fig, fullfile(outRoot, 'figures'), ...
+    'graph_umap_2d_visualization_audit', style);
+close(fig);
+end
+
+function files = local_plot_umap_3d(outRoot, style)
+pathText = fullfile(outRoot, 'graph_umap_embedding_audit.csv');
+if ~isfile(pathText)
+    files = strings(0, 1);
+    return
+end
+U = local_read_csv(pathText);
+if isempty(U)
+    files = strings(0, 1);
+    return
+end
+idx = local_plot_sample(height(U), 14000, 108);
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 1100 860]);
+scatter3(double(U.umap3_x(idx)), double(U.umap3_y(idx)), double(U.umap3_z(idx)), ...
+    8, log10(double(U.chunk_sec(idx))), 'filled');
+xlabel('UMAP 1'); ylabel('UMAP 2'); zlabel('UMAP 3');
+title('Condition-blind UMAP 3D audit (visualization only)');
+cb = colorbar; cb.Label.String = 'log_{10} chunk scale (s)';
+view(42, 24); axis vis3d;
+local_format_axis(gca, style);
+files = local_export(fig, fullfile(outRoot, 'figures'), ...
+    'graph_umap_3d_visualization_audit', style);
+close(fig);
+end
+
+function files = local_plot_sensitivity_overview(outRoot, style)
+stagePath = fullfile(outRoot, 'graph_anchor_stage_sensitivity_audit.csv');
+sessionPath = fullfile(outRoot, 'graph_session_excluded_sensitivity_audit.csv');
+resamplePath = fullfile(outRoot, 'graph_neighborhood_resampling_audit.csv');
+if ~(isfile(stagePath) && isfile(sessionPath) && isfile(resamplePath))
+    files = strings(0, 1);
+    return
+end
+S = local_read_csv(stagePath);
+E = local_read_csv(sessionPath);
+R = local_read_csv(resamplePath);
+S = S(string(S.status) == "completed", :);
+E = E(string(E.source_scope) == "source_scale", :);
+R = R(string(R.resampling_type) ~= "reference", :);
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [30 80 1800 680]);
+tiledlayout(fig, 1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+nexttile;
+variantLabels = local_clean_label(string(S.graph_variant));
+bar(categorical(variantLabels, variantLabels, variantLabels), ...
+    [double(S.mean_same_scale_neighbor_fraction), double(S.mean_same_session_neighbor_fraction)]);
+set(gca, 'TickLabelInterpreter', 'none');
+ylabel('Neighbor fraction'); title('Anchor-stage graph sensitivities');
+legend({'Same scale','Same session'}, 'Location', 'northoutside', ...
+    'Orientation', 'horizontal', 'Box', 'off');
+local_format_axis(gca, style);
+nexttile;
+semilogx(double(E.chunk_sec), double(E.mean_primary_neighbor_retention_fraction), ...
+    '-o', 'Color', style.blue, 'MarkerFaceColor', style.blue, 'LineWidth', 1.5); hold on;
+semilogx(double(E.chunk_sec), double(E.median_neighbor_jaccard_to_primary), ...
+    '-s', 'Color', style.gold, 'MarkerFaceColor', style.gold, 'LineWidth', 1.5);
+xlabel('Chunk scale (s)'); ylabel('Retention / Jaccard');
+title('Session-excluded sensitivity');
+legend({'Primary neighbor retention','Median Jaccard'}, 'Location', 'best', 'Box', 'off');
+local_format_axis(gca, style);
+nexttile;
+types = unique(string(R.resampling_type), 'stable');
+data = cell(numel(types), 1);
+for i = 1:numel(types)
+    data{i} = double(R.median_neighbor_jaccard_to_panel_reference(string(R.resampling_type) == types(i)));
+end
+maxN = max(cellfun(@numel, data));
+M = nan(maxN, numel(types));
+for i = 1:numel(types), M(1:numel(data{i}), i) = data{i}; end
+typeLabels = local_clean_label(types);
+typeCategories = categorical(types, types, typeLabels);
+boxchart(repelem(typeCategories, maxN), M(:));
+set(gca, 'TickLabelInterpreter', 'none');
+ylabel('Median node-neighborhood Jaccard');
+title('Resampling-based neighborhood retention');
+local_format_axis(gca, style);
+files = local_export(fig, fullfile(outRoot, 'figures'), ...
+    'graph_sensitivity_overview_audit', style);
+close(fig);
+end
+
+function idx = local_plot_sample(n, maxN, seed)
+rng(seed, 'twister');
+if n > maxN
+    idx = sort(randperm(n, maxN));
+else
+    idx = 1:n;
+end
+end
+
 function values = local_scale_median(T, varName)
 scales = unique(T.scale_index, 'stable')';
 values = NaN(numel(scales), 1);
@@ -318,7 +623,10 @@ if style.exportPng
 end
 if style.exportPdf
     pdfPath = fullfile(figDir, stem + ".pdf");
-    exportgraphics(fig, pdfPath, 'ContentType', 'vector');
+    % Dense scatter/density figures can crash MATLAB's Windows vector
+    % hardcopy renderer. A high-resolution raster embedded in PDF preserves
+    % the reviewer-facing artifact without changing any analytical values.
+    exportgraphics(fig, pdfPath, 'ContentType', 'image', 'Resolution', style.dpi);
     files(end + 1, 1) = string(pdfPath);
 end
 end

@@ -46,10 +46,22 @@ if isempty(anchors)
 end
 
 validNum = double(validMask);
-validCs = [0; cumsum(validNum)];
-rowFiniteFrac = mean(isfinite(X), 2);
+if isfield(Seq, 'validCumsum') && numel(Seq.validCumsum) == T + 1
+    validCs = double(Seq.validCumsum(:));
+else
+    validCs = [0; cumsum(validNum)];
+end
+if isfield(Seq, 'rowFiniteFrac') && numel(Seq.rowFiniteFrac) == T
+    rowFiniteFrac = double(Seq.rowFiniteFrac(:));
+else
+    rowFiniteFrac = mean(isfinite(X), 2);
+end
 rowFiniteFrac(~isfinite(rowFiniteFrac)) = 0;
-finiteCs = [0; cumsum(rowFiniteFrac)];
+if isfield(Seq, 'finiteCumsum') && numel(Seq.finiteCumsum) == T + 1
+    finiteCs = double(Seq.finiteCumsum(:));
+else
+    finiteCs = [0; cumsum(rowFiniteFrac)];
+end
 
 nAnchors = numel(anchors);
 nScales = numel(scaleSec);

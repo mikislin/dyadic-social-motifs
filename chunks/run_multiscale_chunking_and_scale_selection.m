@@ -43,8 +43,17 @@ fprintf('run_06_build_multiscale_chunks_and_select_scales\n');
 fprintf('Repo root: %s\n', repoRoot);
 fprintf('Output root: %s\n', outRoot);
 fprintf('Run mode: %s\n', params.run_mode);
+fprintf('Anchor manifest mode: %s\n', params.anchor_manifest_mode);
 
 writetable(params.config_table, paths.parameterAudit);
+
+if params.anchor_manifest_mode == "rare_enriched"
+    outputs = build_rare_enriched_primary_anchor_manifest(repoRoot, params);
+    outputs.parameter_audit_path = string(paths.parameterAudit);
+    fprintf('Rare-enriched anchor bank complete: %d rows (%d retained base; %d added).\n', ...
+        outputs.n_expanded_anchors, outputs.n_base_anchors, outputs.n_rare_enriched_anchors);
+    return
+end
 
 [eligibleSessions, featureDict] = local_load_run05_inputs(repoRoot, params);
 [featureNames, canonicalMeta] = default_dyad_feature_metadata();

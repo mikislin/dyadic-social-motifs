@@ -39,6 +39,7 @@ fprintf('run_08_build_condition_blind_motif_graph\n');
 fprintf('Repo root: %s\n', repoRoot);
 fprintf('Output root: %s\n', outRoot);
 fprintf('Run mode: %s\n', params.run_mode);
+fprintf('Anchor manifest mode: %s\n', params.anchor_manifest_mode);
 
 embeddingRoot = resolve_repo_path(repoRoot, params.embedding_input_dir);
 fprintf('Run_07 embedding input root: %s\n', embeddingRoot);
@@ -70,6 +71,8 @@ Graph = local_subset_graph(GraphMax, params.k_neighbors);
     local_topology_audits(Graph, nodeManifest, params);
 [arenaLabel, arenaSource] = local_posthoc_arena_labels(rowManifest, nodeManifest);
 neighborAudit = local_neighbor_composition_audit(Graph, nodeManifest, arenaLabel);
+[scaleMixingAudit, neighborNullAudit] = ...
+    compute_graph_scale_null_audits(Graph, nodeManifest, arenaLabel);
 kSensitivity = local_k_sensitivity_audit(GraphMax, params, nodeManifest);
 
 [eventCoverageAudit, eventNodeAudit, eventSource] = local_event_coverage_audit( ...
@@ -80,9 +83,48 @@ writetable(topologySummary, paths.topologySummary);
 writetable(degreeAudit, paths.degreeAudit);
 writetable(componentAudit, paths.componentAudit);
 writetable(neighborAudit, paths.neighborAudit);
+writetable(scaleMixingAudit, paths.scaleMixingAudit);
+writetable(neighborNullAudit, paths.neighborNullAudit);
 writetable(kSensitivity, paths.kSensitivityAudit);
 writetable(eventCoverageAudit, paths.eventCoverageAudit);
 writetable(eventNodeAudit, paths.eventNodeAudit);
+
+eventChunkRoot = string(fileparts(char(eventSource)));
+[rareDefinition, rareMembership, rareSeedManifest] = define_condition_blind_rare_strata(outRoot, ...
+    'embeddingRoot', embeddingRoot, ...
+    'chunkRoot', eventChunkRoot, ...
+    'eventSummaryFile', local_active_event_summary_file(params), ...
+    'nodeManifest', nodeManifest, ...
+    'degreeAudit', degreeAudit, ...
+    'rowManifest', rowManifest, ...
+    'lowDensityQuantile', params.rare_low_density_quantile, ...
+    'peripheryInDegreeQuantile', params.rare_periphery_indegree_quantile, ...
+    'highRadialQuantile', params.high_quantile_threshold, ...
+    'undercoveredCellQuantile', params.rare_undercovered_cell_quantile, ...
+    'writeOutputs', false);
+rareDefinition.definition_stage = repmat("postfit_current_graph_re_evaluation", height(rareDefinition), 1);
+rareDefinition.active_for_anchor_selection = false(height(rareDefinition), 1);
+rareMembership.definition_stage = repmat("postfit_current_graph_re_evaluation", height(rareMembership), 1);
+rareMembership.active_for_anchor_selection = false(height(rareMembership), 1);
+rareSeedManifest.definition_stage = repmat("postfit_current_graph_re_evaluation", height(rareSeedManifest), 1);
+rareSeedManifest.active_for_anchor_selection = false(height(rareSeedManifest), 1);
+rareCompositionAudit = local_rare_composition_audit(rareDefinition, rareMembership, nodeManifest, params);
+rareNeighborAudit = local_rare_neighbor_retention_audit(rareMembership, nodeManifest, Graph, params);
+baselineCoverageAudit = local_baseline_vs_enriched_coverage_audit(repoRoot, eventCoverageAudit, params);
+eventPrevalenceFoldAudit = compute_graph_event_prevalence_fold_audit(baselineCoverageAudit);
+writetable(rareCompositionAudit, paths.rareCompositionAudit);
+writetable(rareNeighborAudit, paths.rareNeighborAudit);
+writetable(baselineCoverageAudit, paths.baselineCoverageAudit);
+writetable(eventPrevalenceFoldAudit, paths.eventPrevalenceFoldAudit);
+rareDefinitionStageAudit = persist_run08_rare_definition_stages( ...
+    repoRoot, outRoot, params, rareDefinition, rareMembership, rareSeedManifest);
+
+fprintf('Building anchor-stage, session-excluded, and resampling graph audits...\n');
+sensitivityAudit = build_condition_blind_graph_sensitivity_audits( ...
+    X, nodeManifest, Graph, params, outRoot);
+fprintf('Building global PCA and visualization-only UMAP audits...\n');
+visualizationAudit = build_run08_embedding_visualization_audits( ...
+    embeddingRoot, outRoot, X, nodeManifest, Graph, params);
 
 GraphModel = struct();
 GraphModel.params = params;
@@ -95,9 +137,25 @@ GraphModel.topologySummary = topologySummary;
 GraphModel.degreeAudit = degreeAudit;
 GraphModel.componentAudit = componentAudit;
 GraphModel.neighborAudit = neighborAudit;
+GraphModel.scaleMixingAudit = scaleMixingAudit;
+GraphModel.neighborNullAudit = neighborNullAudit;
 GraphModel.kSensitivity = kSensitivity;
 GraphModel.eventCoverageAudit = eventCoverageAudit;
 GraphModel.eventNodeAudit = eventNodeAudit;
+GraphModel.rareDefinition = rareDefinition;
+GraphModel.rareMembership = rareMembership;
+GraphModel.rareSeedManifest = rareSeedManifest;
+GraphModel.rareCompositionAudit = rareCompositionAudit;
+GraphModel.rareNeighborAudit = rareNeighborAudit;
+GraphModel.baselineCoverageAudit = baselineCoverageAudit;
+GraphModel.eventPrevalenceFoldAudit = eventPrevalenceFoldAudit;
+GraphModel.rareDefinitionProvenanceAudit = rareDefinitionStageAudit.provenance;
+GraphModel.rareDefinitionComparisonAudit = rareDefinitionStageAudit.comparison;
+GraphModel.anchorStageSensitivityAudit = sensitivityAudit.stageSummary;
+GraphModel.sessionExcludedSensitivityAudit = sensitivityAudit.sessionSummary;
+GraphModel.neighborhoodResamplingAudit = sensitivityAudit.resampling;
+GraphModel.globalPcaVarianceAudit = visualizationAudit.globalVariance;
+GraphModel.umapStatusAudit = visualizationAudit.umapStatus;
 GraphModel.labels_used_for_graph = "none";
 GraphModel.arena_used_for_graph = false;
 GraphModel.condition_used_for_graph = false;
@@ -116,6 +174,12 @@ fprintf('Wrote node manifest: %s\n', paths.nodeManifest);
 fprintf('Wrote edge list: %s\n', paths.edgeList);
 fprintf('Wrote topology summary: %s\n', paths.topologySummary);
 fprintf('Wrote rare-event coverage audit: %s\n', paths.eventCoverageAudit);
+fprintf('Wrote complete scale-mixing audit: %s\n', paths.scaleMixingAudit);
+fprintf('Wrote null-normalized neighbor audit: %s\n', paths.neighborNullAudit);
+fprintf('Wrote rare-strata composition audit: %s\n', paths.rareCompositionAudit);
+fprintf('Wrote rare-strata neighbor-retention audit: %s\n', paths.rareNeighborAudit);
+fprintf('Wrote baseline-versus-enriched coverage audit: %s\n', paths.baselineCoverageAudit);
+fprintf('Wrote event prevalence-fold audit: %s\n', paths.eventPrevalenceFoldAudit);
 fprintf('Wrote figure manifest: %s\n', paths.figureManifest);
 fprintf('Wrote ignored MAT artifact: %s\n', paths.graphModelMat);
 
@@ -128,6 +192,9 @@ outputs.n_directed_edges = height(Graph.Edges);
 outputs.topology_summary_path = string(paths.topologySummary);
 outputs.edge_list_path = string(paths.edgeList);
 outputs.event_coverage_audit_path = string(paths.eventCoverageAudit);
+outputs.rare_composition_audit_path = string(paths.rareCompositionAudit);
+outputs.rare_neighbor_retention_audit_path = string(paths.rareNeighborAudit);
+outputs.baseline_coverage_audit_path = string(paths.baselineCoverageAudit);
 outputs.figure_manifest_path = string(paths.figureManifest);
 outputs.graph_model_mat_path = string(paths.graphModelMat);
 end
@@ -143,9 +210,15 @@ paths.topologySummary = fullfile(outRoot, 'graph_topology_summary.csv');
 paths.degreeAudit = fullfile(outRoot, 'graph_degree_audit.csv');
 paths.componentAudit = fullfile(outRoot, 'graph_component_audit.csv');
 paths.neighborAudit = fullfile(outRoot, 'graph_neighbor_composition_audit.csv');
+paths.scaleMixingAudit = fullfile(outRoot, 'graph_scale_mixing_matrix_audit.csv');
+paths.neighborNullAudit = fullfile(outRoot, 'graph_neighbor_null_normalized_audit.csv');
 paths.kSensitivityAudit = fullfile(outRoot, 'graph_k_sensitivity_audit.csv');
 paths.eventCoverageAudit = fullfile(outRoot, 'graph_rare_event_coverage_audit.csv');
 paths.eventNodeAudit = fullfile(outRoot, 'graph_event_node_audit.csv');
+paths.rareCompositionAudit = fullfile(outRoot, 'graph_rare_strata_composition_audit.csv');
+paths.rareNeighborAudit = fullfile(outRoot, 'graph_rare_strata_neighbor_retention_audit.csv');
+paths.baselineCoverageAudit = fullfile(outRoot, 'graph_baseline_vs_enriched_coverage_audit.csv');
+paths.eventPrevalenceFoldAudit = fullfile(outRoot, 'graph_event_prevalence_fold_audit.csv');
 paths.figureManifest = fullfile(outRoot, 'graph_qc_figure_manifest.csv');
 paths.graphModelMat = fullfile(outRoot, char(params.graph_model_mat_file));
 end
@@ -276,6 +349,16 @@ candidate = ["embedding_row_id", "scale_index", "primary_scale_rank", "chunk_sec
     "chunk_frames", "session_index", "raw_index", "anchor_frame", "anchor_time_s", ...
     "start_time_s", "stop_time_s", "valid_frac", "feature_finite_frac", ...
     "hierarchical_role", "session_id", "qc_set", "primary_anchor_global_id", ...
+    "expanded_anchor_global_id", "anchor_manifest_mode", "anchor_stage", ...
+    "selection_phase", "quota_requested_stratum_id", ...
+    "rare_stratum_id", "final_assigned_rare_stratum_id", ...
+    "rare_stratum_rule", "rare_stratum_score", ...
+    "rare_strata_membership_ids", "rare_strata_membership_count", ...
+    "selection_composite_score", "fill_composite_score", "fill_reason", ...
+    "base_inclusion_probability", "rare_inclusion_probability", ...
+    "final_inclusion_probability", "pca_training_weight", ...
+    "graph_training_weight", "audit_inverse_probability_weight", ...
+    "audit_weight_interpretation", ...
     "run07_embedding_anchor_id", "run07_matrix_role", "labels_used_for_embedding_matrix", ...
     "arena_used_for_embedding_matrix", "condition_used_for_embedding_matrix"];
 keep = candidate(ismember(candidate, string(scoreTable.Properties.VariableNames)));
@@ -287,6 +370,9 @@ if ismember("global_pc01", scoreNames)
 end
 if ismember("global_pc02", scoreNames)
     nodeManifest.graph_plot_pc2 = double(scoreTable.global_pc02);
+end
+if ismember("global_pc03", scoreNames)
+    nodeManifest.graph_plot_pc3 = double(scoreTable.global_pc03);
 end
 nodeManifest.labels_used_for_graph_node = repmat("none", height(nodeManifest), 1);
 nodeManifest.arena_used_for_graph_node = false(height(nodeManifest), 1);
@@ -487,7 +573,7 @@ inputRoot = string(inputScaleAudit.run06_input_root(find(strlength(string(inputS
 if strlength(inputRoot) == 0
     return
 end
-eventPath = fullfile(inputRoot, char(params.primary_event_summary_file));
+eventPath = fullfile(inputRoot, char(local_active_event_summary_file(params)));
 if ~isfile(eventPath)
     return
 end
@@ -495,11 +581,18 @@ E = local_read_csv(eventPath);
 eventSource = string(eventPath);
 local_assert_event_summary_label_free(E);
 
-assert(ismember('primary_anchor_global_id', rowManifest.Properties.VariableNames) && ...
-    ismember('primary_anchor_global_id', E.Properties.VariableNames), ...
-    'run_condition_blind_motif_graph_build:MissingEventJoinKey', ...
-    'Event coverage audit requires primary_anchor_global_id in row manifest and event summary.');
-[tf, loc] = ismember(rowManifest.primary_anchor_global_id, E.primary_anchor_global_id);
+if ismember('expanded_anchor_global_id', rowManifest.Properties.VariableNames) && ...
+        ismember('expanded_anchor_global_id', E.Properties.VariableNames) && ...
+        all(isfinite(double(rowManifest.expanded_anchor_global_id)))
+    joinKey = 'expanded_anchor_global_id';
+elseif ismember('primary_anchor_global_id', rowManifest.Properties.VariableNames) && ...
+        ismember('primary_anchor_global_id', E.Properties.VariableNames)
+    joinKey = 'primary_anchor_global_id';
+else
+    error('run_condition_blind_motif_graph_build:MissingEventJoinKey', ...
+        'Event coverage audit has no shared condition-blind anchor identifier.');
+end
+[tf, loc] = ismember(rowManifest.(joinKey), E.(joinKey));
 assert(all(tf), 'run_condition_blind_motif_graph_build:MissingEventRows', ...
     'Some run_07 row-manifest rows could not be matched to run_06 event summary.');
 Enode = E(loc, :);
@@ -550,6 +643,111 @@ for e = 1:height(eventDefs)
     end
     eventNodeAudit.(eventDefs.event_id(e)) = nodeFlagAll;
 end
+end
+
+function fileName = local_active_event_summary_file(params)
+if params.anchor_manifest_mode == "rare_enriched"
+    fileName = string(params.expanded_event_summary_file);
+else
+    fileName = string(params.primary_event_summary_file);
+end
+end
+
+function Audit = local_rare_composition_audit(Definition, Membership, nodeManifest, params)
+Audit = Definition;
+Audit.anchor_manifest_mode = repmat(string(params.anchor_manifest_mode), height(Audit), 1);
+Audit.n_graph_defined_member_rows = Audit.n_member_nodes;
+Audit.n_input_assigned_rows = zeros(height(Audit), 1);
+Audit.n_assigned_base_rows = zeros(height(Audit), 1);
+Audit.n_assigned_rare_enriched_rows = zeros(height(Audit), 1);
+if ismember('rare_stratum_id', nodeManifest.Properties.VariableNames)
+    assigned = string(nodeManifest.rare_stratum_id);
+else
+    assigned = repmat("none", height(nodeManifest), 1);
+end
+if ismember('anchor_stage', nodeManifest.Properties.VariableNames)
+    stage = string(nodeManifest.anchor_stage);
+else
+    stage = repmat("base_time_even", height(nodeManifest), 1);
+end
+for i = 1:height(Audit)
+    idx = double(nodeManifest.scale_index) == double(Audit.scale_index(i)) & ...
+        assigned == string(Audit.rare_stratum_id(i));
+    Audit.n_input_assigned_rows(i) = nnz(idx);
+    Audit.n_assigned_base_rows(i) = nnz(idx & stage == "base_time_even");
+    Audit.n_assigned_rare_enriched_rows(i) = nnz(idx & stage == "rare_strata_enriched");
+end
+Audit.n_membership_rows_total = repmat(height(Membership), height(Audit), 1);
+Audit.labels_used_for_composition_audit = repmat("none", height(Audit), 1);
+Audit.arena_used_for_composition_audit = false(height(Audit), 1);
+Audit.condition_used_for_composition_audit = false(height(Audit), 1);
+end
+
+function Audit = local_rare_neighbor_retention_audit(Membership, nodeManifest, Graph, params)
+Audit = table();
+if isempty(Membership)
+    return
+end
+n = height(nodeManifest);
+keys = unique(Membership(:, {'scale_index','rare_stratum_id'}), 'rows', 'stable');
+Edges = Graph.Edges;
+for i = 1:height(keys)
+    memberRows = double(Membership.scale_index) == double(keys.scale_index(i)) & ...
+        string(Membership.rare_stratum_id) == string(keys.rare_stratum_id(i));
+    member = false(n, 1);
+    member(double(Membership.graph_node_id(memberRows))) = true;
+    sourceEdge = member(double(Edges.source_node_id));
+    targetRetained = member(double(Edges.target_node_id(sourceEdge)));
+    scaleMask = double(nodeManifest.scale_index) == double(keys.scale_index(i));
+    one = table();
+    one.scale_index = double(keys.scale_index(i));
+    one.chunk_sec = double(nodeManifest.chunk_sec(find(scaleMask, 1)));
+    one.rare_stratum_id = string(keys.rare_stratum_id(i));
+    one.anchor_manifest_mode = string(params.anchor_manifest_mode);
+    one.n_member_nodes = nnz(member);
+    one.n_outgoing_neighbor_edges = nnz(sourceEdge);
+    one.n_retained_neighbor_edges = nnz(targetRetained);
+    one.mean_neighbor_retention_fraction = mean(double(targetRetained), 'omitnan');
+    one.background_fraction_within_scale = nnz(member) ./ max(nnz(scaleMask), 1);
+    one.retention_over_background = one.mean_neighbor_retention_fraction ./ ...
+        max(one.background_fraction_within_scale, eps);
+    one.neighbor_input_rule = "postfit_graph_membership_join_not_edge_input";
+    one.labels_used_for_neighbor_retention = "none";
+    one.arena_used_for_neighbor_retention = false;
+    one.condition_used_for_neighbor_retention = false;
+    Audit = [Audit; one]; %#ok<AGROW>
+end
+end
+
+function Audit = local_baseline_vs_enriched_coverage_audit(repoRoot, current, params)
+Audit = current;
+Audit.anchor_manifest_mode = repmat(string(params.anchor_manifest_mode), height(Audit), 1);
+Audit.baseline_graph_root = repmat(resolve_repo_path(repoRoot, params.baseline_graph_input_dir), height(Audit), 1);
+Audit.baseline_n_graph_nodes = nan(height(Audit), 1);
+Audit.baseline_n_graph_event_nodes = nan(height(Audit), 1);
+Audit.baseline_graph_event_fraction = nan(height(Audit), 1);
+Audit.baseline_selected_event_coverage_fraction = nan(height(Audit), 1);
+baselinePath = fullfile(resolve_repo_path(repoRoot, params.baseline_graph_input_dir), ...
+    'graph_rare_event_coverage_audit.csv');
+if isfile(baselinePath)
+    Base = local_read_csv(baselinePath);
+    keyCurrent = string(Audit.event_id) + "_" + string(round(double(Audit.scale_index)));
+    keyBase = string(Base.event_id) + "_" + string(round(double(Base.scale_index)));
+    [tf, loc] = ismember(keyCurrent, keyBase);
+    Audit.baseline_n_graph_nodes(tf) = double(Base.n_graph_nodes(loc(tf)));
+    Audit.baseline_n_graph_event_nodes(tf) = double(Base.n_graph_event_nodes(loc(tf)));
+    Audit.baseline_graph_event_fraction(tf) = double(Base.graph_event_fraction(loc(tf)));
+    Audit.baseline_selected_event_coverage_fraction(tf) = ...
+        double(Base.selected_event_coverage_fraction(loc(tf)));
+end
+Audit.delta_graph_event_nodes_vs_baseline = Audit.n_graph_event_nodes - Audit.baseline_n_graph_event_nodes;
+Audit.delta_graph_event_fraction_vs_baseline = Audit.graph_event_fraction - Audit.baseline_graph_event_fraction;
+Audit.delta_selected_event_coverage_vs_baseline = Audit.selected_event_coverage_fraction - ...
+    Audit.baseline_selected_event_coverage_fraction;
+Audit.comparison_role = repmat("postfit_baseline_vs_current_audit_not_graph_input", height(Audit), 1);
+Audit.labels_used_for_baseline_comparison = repmat("none", height(Audit), 1);
+Audit.arena_used_for_baseline_comparison = false(height(Audit), 1);
+Audit.condition_used_for_baseline_comparison = false(height(Audit), 1);
 end
 
 function defs = local_event_definitions()

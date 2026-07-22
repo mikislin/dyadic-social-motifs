@@ -16,6 +16,12 @@ rows = local_add_figure(rows, local_plot_anchor_coverage(outRoot, style), ...
 rows = local_add_figure(rows, local_plot_pca_dimensions(outRoot, style), ...
     fullfile(outRoot, 'embedding_pca_by_scale.csv'), ...
     "per-scale PCA dimensionality from run_06 guidance and run_07 caps");
+rows = local_add_figure(rows, local_plot_preprocess_dimension_audit(outRoot, style), ...
+    fullfile(outRoot, 'embedding_preprocess_dimension_audit.csv'), ...
+    "condition-blind sparse-feature scale safeguard and standardized-tail audit");
+rows = local_add_figure(rows, local_plot_anchor_stage_sensitivity(outRoot, style), ...
+    fullfile(outRoot, 'embedding_anchor_stage_pca_sensitivity_audit.csv'), ...
+    "audit-only base rare-enriched and combined PCA subspace sensitivity");
 rows = local_add_figure(rows, local_plot_matrix_manifest(outRoot, style), ...
     fullfile(outRoot, 'embedding_matrix_manifest.csv'), ...
     "embedding matrix finite-value and artifact audit");
@@ -141,6 +147,75 @@ title('Matrix size manifest', 'Interpreter', 'none');
 local_format_axis(gca, style);
 
 files = local_export(fig, fullfile(outRoot, 'figures'), 'embedding_matrix_manifest_finite_audit', style);
+close(fig);
+end
+
+function files = local_plot_preprocess_dimension_audit(outRoot, style)
+T = local_read_csv(fullfile(outRoot, 'embedding_preprocess_dimension_audit.csv'));
+scales = unique(T.chunk_sec, 'stable');
+nGuard = zeros(numel(scales), 1);
+maxStd = nan(numel(scales), 1);
+maxTailFraction = nan(numel(scales), 1);
+for i = 1:numel(scales)
+    idx = T.chunk_sec == scales(i);
+    nGuard(i) = nnz(logical(double(T.sparse_scale_safeguard_triggered(idx))));
+    maxStd(i) = max(T.standardized_std(idx), [], 'omitnan');
+    maxTailFraction(i) = max(T.fraction_abs_gt_tail_threshold(idx), [], 'omitnan');
+end
+
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 1500 760]);
+tiledlayout(fig, 1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+nexttile;
+plot(scales, nGuard, 'o-', 'Color', style.red, 'MarkerFaceColor', style.red, 'LineWidth', 1.6);
+set(gca, 'XScale', 'log');
+xlabel('Chunk scale (s)', 'Interpreter', 'none');
+ylabel('Dimensions using sparse-scale guard', 'Interpreter', 'none');
+title('Configurable IQR-to-SD safeguard', 'Interpreter', 'none');
+local_format_axis(gca, style);
+
+nexttile;
+yyaxis left;
+plot(scales, maxStd, 's-', 'Color', style.blue, 'LineWidth', 1.5);
+ylabel('Maximum standardized SD', 'Interpreter', 'none');
+yyaxis right;
+plot(scales, maxTailFraction, 'd-', 'Color', style.gold, 'LineWidth', 1.5);
+ylabel('Maximum fraction beyond tail threshold', 'Interpreter', 'none');
+set(gca, 'XScale', 'log');
+xlabel('Chunk scale (s)', 'Interpreter', 'none');
+title('Post-standardization tail diagnostics', 'Interpreter', 'none');
+local_format_axis(gca, style);
+
+files = local_export(fig, fullfile(outRoot, 'figures'), ...
+    'embedding_preprocess_sparse_scale_audit', style);
+close(fig);
+end
+
+function files = local_plot_anchor_stage_sensitivity(outRoot, style)
+T = local_read_csv(fullfile(outRoot, 'embedding_anchor_stage_pca_sensitivity_audit.csv'));
+complete = string(T.audit_status) == "complete";
+if ~any(complete)
+    files = strings(0, 1);
+    return
+end
+T = T(complete, :);
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [80 80 1450 720]);
+hold on;
+plot(T.chunk_sec, T.combined_vs_base_subspace_similarity, 'o-', ...
+    'Color', style.blue, 'LineWidth', 1.5);
+plot(T.chunk_sec, T.combined_vs_rare_enriched_subspace_similarity, 's-', ...
+    'Color', style.red, 'LineWidth', 1.5);
+plot(T.chunk_sec, T.base_vs_rare_enriched_subspace_similarity, 'd-', ...
+    'Color', style.gold, 'LineWidth', 1.5);
+set(gca, 'XScale', 'log');
+ylim([0 1.02]);
+xlabel('Chunk scale (s)', 'Interpreter', 'none');
+ylabel('Mean principal-angle cosine', 'Interpreter', 'none');
+title('Anchor-stage PCA sensitivity (audit only)', 'Interpreter', 'none');
+legend({'Combined vs base','Combined vs rare enriched','Base vs rare enriched'}, ...
+    'Location', 'best', 'Box', 'off');
+local_format_axis(gca, style);
+files = local_export(fig, fullfile(outRoot, 'figures'), ...
+    'embedding_anchor_stage_pca_sensitivity', style);
 close(fig);
 end
 

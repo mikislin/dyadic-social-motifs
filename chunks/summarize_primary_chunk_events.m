@@ -12,8 +12,8 @@ p.addParameter('turnThresholdDeg', 45, @(x)isnumeric(x) && isscalar(x) && x > 0)
 p.parse(varargin{:});
 P = p.Results;
 
-eventSummary = table();
 if isempty(anchorManifest)
+    eventSummary = table();
     return
 end
 
@@ -21,6 +21,26 @@ required = ["feature_row_index", "start_frame", "stop_frame", "anchor_frame"];
 missing = setdiff(required, string(anchorManifest.Properties.VariableNames));
 assert(isempty(missing), 'summarize_primary_chunk_events:MissingColumn', ...
     'anchorManifest missing required columns: %s', strjoin(missing, ', '));
+
+% Preallocate the output once. The previous row-wise table concatenation was
+% acceptable for the 13,000-row baseline but scaled poorly for the expanded
+% rare-strata bank. Numeric definitions and per-window calculations below are
+% unchanged.
+n = height(anchorManifest);
+eventSummary = anchorManifest;
+numericNames = ["chunk_duration_s","n_event_valid_frames","event_valid_fraction", ...
+    "contact_dwell_fraction","contact_transition_count","first_contact_latency_s", ...
+    "mutual_approach_dwell_fraction","withdrawal_dwell_fraction", ...
+    "approach_withdraw_transition_count","asym_positive_dwell_fraction", ...
+    "asym_negative_dwell_fraction","role_asymmetry_bias_mean", ...
+    "centroid_distance_mean_mm","centroid_distance_min_mm", ...
+    "centroid_distance_delta_mm","radial_speed_mean_mm_s", ...
+    "radial_speed_sign_change_count","approach1_positive_fraction", ...
+    "approach2_positive_fraction","role_approach_imbalance", ...
+    "mutual_facing_mean","heading_abs_change_deg","heading_large_turn_count"];
+for j = 1:numel(numericNames)
+    eventSummary.(numericNames(j)) = nan(n, 1);
+end
 
 for sess = unique(anchorManifest.feature_row_index(:))'
     rows = find(anchorManifest.feature_row_index == sess);
@@ -58,38 +78,37 @@ for sess = unique(anchorManifest.feature_row_index(:))'
         heading = F.heading_diff_deg(idx);
         mutualFacing = F.mutual_facing(idx);
 
-        one = anchorManifest(rr, :);
-        one.chunk_duration_s = durationSec;
-        one.n_event_valid_frames = nnz(valid);
-        one.event_valid_fraction = nnz(valid) ./ max(nFrames, 1);
-        one.contact_dwell_fraction = local_fraction_true(contact, valid);
-        one.contact_transition_count = local_transition_count(contact, valid);
-        one.first_contact_latency_s = local_first_latency(contact, valid, fps);
-        one.mutual_approach_dwell_fraction = local_fraction_true(mutualApproach, valid);
-        one.withdrawal_dwell_fraction = local_fraction_true(withdrawal, valid);
-        one.approach_withdraw_transition_count = ...
+        eventSummary.chunk_duration_s(rr) = durationSec;
+        eventSummary.n_event_valid_frames(rr) = nnz(valid);
+        eventSummary.event_valid_fraction(rr) = nnz(valid) ./ max(nFrames, 1);
+        eventSummary.contact_dwell_fraction(rr) = local_fraction_true(contact, valid);
+        eventSummary.contact_transition_count(rr) = local_transition_count(contact, valid);
+        eventSummary.first_contact_latency_s(rr) = local_first_latency(contact, valid, fps);
+        eventSummary.mutual_approach_dwell_fraction(rr) = local_fraction_true(mutualApproach, valid);
+        eventSummary.withdrawal_dwell_fraction(rr) = local_fraction_true(withdrawal, valid);
+        eventSummary.approach_withdraw_transition_count(rr) = ...
             local_state_transition_count(mutualApproach, withdrawal, valid);
-        one.asym_positive_dwell_fraction = local_fraction_condition(asym > 0.5, valid & isfinite(asym));
-        one.asym_negative_dwell_fraction = local_fraction_condition(asym < -0.5, valid & isfinite(asym));
-        one.role_asymmetry_bias_mean = mean(asym(valid & isfinite(asym)), 'omitnan');
-        one.centroid_distance_mean_mm = local_mean_valid(dist, valid);
-        one.centroid_distance_min_mm = local_min_valid(dist, valid);
-        one.centroid_distance_delta_mm = local_late_early_delta(dist, valid);
-        one.radial_speed_mean_mm_s = local_mean_valid(radial, valid);
-        one.radial_speed_sign_change_count = local_sign_change_count(radial, valid);
-        one.approach1_positive_fraction = local_fraction_condition(approach1 > 0, valid & isfinite(approach1));
-        one.approach2_positive_fraction = local_fraction_condition(approach2 > 0, valid & isfinite(approach2));
-        one.role_approach_imbalance = one.approach1_positive_fraction - one.approach2_positive_fraction;
-        one.mutual_facing_mean = local_mean_valid(mutualFacing, valid);
-        one.heading_abs_change_deg = local_heading_abs_change(heading, valid);
-        one.heading_large_turn_count = local_heading_turn_count(heading, valid, P.turnThresholdDeg);
-        one.event_summary_rule = "canonical_dyadic_event_features_frame_mask_only_no_labels";
-        one.labels_used_for_event_summary = "none";
-        one.arena_used_for_event_summary = false;
-        one.condition_used_for_event_summary = false;
-        eventSummary = [eventSummary; one]; %#ok<AGROW>
+        eventSummary.asym_positive_dwell_fraction(rr) = local_fraction_condition(asym > 0.5, valid & isfinite(asym));
+        eventSummary.asym_negative_dwell_fraction(rr) = local_fraction_condition(asym < -0.5, valid & isfinite(asym));
+        eventSummary.role_asymmetry_bias_mean(rr) = mean(asym(valid & isfinite(asym)), 'omitnan');
+        eventSummary.centroid_distance_mean_mm(rr) = local_mean_valid(dist, valid);
+        eventSummary.centroid_distance_min_mm(rr) = local_min_valid(dist, valid);
+        eventSummary.centroid_distance_delta_mm(rr) = local_late_early_delta(dist, valid);
+        eventSummary.radial_speed_mean_mm_s(rr) = local_mean_valid(radial, valid);
+        eventSummary.radial_speed_sign_change_count(rr) = local_sign_change_count(radial, valid);
+        eventSummary.approach1_positive_fraction(rr) = local_fraction_condition(approach1 > 0, valid & isfinite(approach1));
+        eventSummary.approach2_positive_fraction(rr) = local_fraction_condition(approach2 > 0, valid & isfinite(approach2));
+        eventSummary.role_approach_imbalance(rr) = eventSummary.approach1_positive_fraction(rr) - ...
+            eventSummary.approach2_positive_fraction(rr);
+        eventSummary.mutual_facing_mean(rr) = local_mean_valid(mutualFacing, valid);
+        eventSummary.heading_abs_change_deg(rr) = local_heading_abs_change(heading, valid);
+        eventSummary.heading_large_turn_count(rr) = local_heading_turn_count(heading, valid, P.turnThresholdDeg);
     end
 end
+eventSummary.event_summary_rule = repmat("canonical_dyadic_event_features_frame_mask_only_no_labels", n, 1);
+eventSummary.labels_used_for_event_summary = repmat("none", n, 1);
+eventSummary.arena_used_for_event_summary = false(n, 1);
+eventSummary.condition_used_for_event_summary = false(n, 1);
 end
 
 function dyad = local_load_dyad(sessionTable, rowIdx, repoRoot)

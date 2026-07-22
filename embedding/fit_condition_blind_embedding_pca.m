@@ -6,6 +6,9 @@ function [Embedding, Audit] = fit_condition_blind_embedding_pca(Input, dimension
 % and are used only after fitting for arena sensitivity diagnostics.
 
 rng(params.rng_seed);
+assert(~isfield(params, 'use_anchor_weights_for_pca') || ~logical(params.use_anchor_weights_for_pca), ...
+    'fit_condition_blind_embedding_pca:WeightedPcaNotEnabled', ...
+    'Initial enriched embedding must remain an unweighted PCA fit.');
 
 nScale = numel(Input.scale);
 ScaleModel = repmat(struct( ...
@@ -30,6 +33,8 @@ pcaByScale = table();
 scaleWeights = table();
 stabilityAudit = table();
 arenaAudit = table();
+preprocessDimensionAudit = table();
+anchorStageSensitivityAudit = table();
 globalCells = cell(nScale, 1);
 rowCells = cell(nScale, 1);
 maxPcs = 0;
@@ -44,7 +49,7 @@ for s = 1:nScale
     targetPcs = double(guidance.recommended_pcs_for_next_embedding(1));
     capPcs = local_role_pc_cap(role, params);
 
-    [Xproc, prep] = local_preprocess_matrix(S.X, params);
+    [Xproc, prep, prepDimension] = local_preprocess_matrix(S.X, params);
     nPC = min([ceil(targetPcs), capPcs, size(Xproc, 1) - 1, size(Xproc, 2)]);
     nPC = max(1, floor(nPC));
     if nPC < params.min_pcs_per_scale && size(Xproc, 1) > params.min_pcs_per_scale && size(Xproc, 2) > params.min_pcs_per_scale
@@ -82,10 +87,14 @@ for s = 1:nScale
     rowCells{s} = ScaleModel(s).rowMeta;
     maxPcs = max(maxPcs, size(scoreForGlobal, 2));
 
-    pcaByScale = [pcaByScale; local_pca_audit_row(S, guidance, role, targetPcs, capPcs, nPC, explained, prep)]; %#ok<AGROW>
+    pcaByScale = [pcaByScale; local_pca_audit_row(S, guidance, role, targetPcs, capPcs, nPC, explained, prep, coeff, dimKept)]; %#ok<AGROW>
     scaleWeights = [scaleWeights; local_scale_weight_row(S, role, nPC, scaleWeight, params)]; %#ok<AGROW>
     stabilityAudit = [stabilityAudit; local_split_half_stability(Xproc, S, role, nPC, params)]; %#ok<AGROW>
     arenaAudit = [arenaAudit; local_arena_sensitivity(S, role, score, coeff, dimKept, params)]; %#ok<AGROW>
+    preprocessDimensionAudit = [preprocessDimensionAudit; ...
+        local_preprocess_dimension_audit(S, prepDimension, params)]; %#ok<AGROW>
+    anchorStageSensitivityAudit = [anchorStageSensitivityAudit; ...
+        local_anchor_stage_pca_sensitivity(Xproc, S, role, nPC, coeff, explained, params)]; %#ok<AGROW>
 end
 
 [Xglobal, rowManifest] = local_stack_global_matrix(globalCells, rowCells, maxPcs);
@@ -123,17 +132,26 @@ globalAudit.n_global_pcs = size(globalScore, 2);
 globalAudit.finite_value_fraction = mean(isfinite(Xglobal), 'all');
 globalAudit.global_pc1_explained = globalExplained(1);
 globalAudit.global_cum5_explained = sum(globalExplained(1:min(5, numel(globalExplained))));
-globalAudit.global_cum_selected_explained = sum(globalExplained);
+globalAudit.global_cum_selected_explained = ...
+    sum(globalExplained(1:min(nGlobal, numel(globalExplained))));
 globalAudit.labels_used_for_global_pca = "none";
 globalAudit.arena_used_for_global_pca = false;
 globalAudit.condition_used_for_global_pca = false;
 globalAudit.global_matrix_mode = string(params.global_matrix_mode);
+globalAudit.weights_used_for_global_pca = false;
+if ismember('anchor_manifest_mode', rowManifest.Properties.VariableNames)
+    globalAudit.anchor_manifest_mode = strjoin(unique(string(rowManifest.anchor_manifest_mode), 'stable'), ";");
+else
+    globalAudit.anchor_manifest_mode = "primary";
+end
 
 Audit = struct();
 Audit.pcaByScale = pcaByScale;
 Audit.scaleWeights = scaleWeights;
 Audit.stability = stabilityAudit;
 Audit.arenaSensitivity = arenaAudit;
+Audit.preprocessDimensions = preprocessDimensionAudit;
+Audit.anchorStageSensitivity = anchorStageSensitivityAudit;
 Audit.global = globalAudit;
 end
 
@@ -169,7 +187,7 @@ else
 end
 end
 
-function [Xproc, prep] = local_preprocess_matrix(X, params)
+function [Xproc, prep, diagnostic] = local_preprocess_matrix(X, params)
 X = double(X);
 [n, d] = size(X);
 Xproc = zeros(n, d);
@@ -177,10 +195,22 @@ center = zeros(1, d);
 scale = ones(1, d);
 winsorLow = nan(1, d);
 winsorHigh = nan(1, d);
+finiteCount = zeros(1, d);
+winsorIqr = nan(1, d);
+winsorStd = nan(1, d);
+iqrToStdRatio = nan(1, d);
+scaleMethod = repmat("dropped_insufficient_finite", 1, d);
+safeguardTriggered = false(1, d);
+standardizedStd = nan(1, d);
+standardizedAbsP99 = nan(1, d);
+standardizedAbsMax = nan(1, d);
+tailCount = zeros(1, d);
+severeTailCount = zeros(1, d);
 
 for j = 1:d
     x = X(:, j);
     ok = isfinite(x);
+    finiteCount(j) = nnz(ok);
     if nnz(ok) < 5
         Xproc(:, j) = 0;
         continue
@@ -188,9 +218,30 @@ for j = 1:d
     q = quantile(x(ok), [params.preprocess_winsor_low, params.preprocess_winsor_high]);
     x(ok) = min(max(x(ok), q(1)), q(2));
     med = median(x(ok), 'omitnan');
-    sc = iqr(x(ok));
-    if ~(isfinite(sc) && sc > params.preprocess_min_robust_scale)
-        sc = std(x(ok), 0, 'omitnan');
+    robustSc = iqr(x(ok));
+    stdSc = std(x(ok), 0, 'omitnan');
+    winsorIqr(j) = robustSc;
+    winsorStd(j) = stdSc;
+    if isfinite(stdSc) && stdSc > params.preprocess_min_robust_scale
+        iqrToStdRatio(j) = robustSc ./ stdSc;
+    end
+
+    useSparseGuard = logical(params.preprocess_sparse_scale_safeguard_enabled) && ...
+        isfinite(robustSc) && robustSc > params.preprocess_min_robust_scale && ...
+        isfinite(stdSc) && stdSc > params.preprocess_min_robust_scale && ...
+        isfinite(iqrToStdRatio(j)) && ...
+        iqrToStdRatio(j) < params.preprocess_min_iqr_to_std_ratio;
+
+    if useSparseGuard
+        sc = stdSc;
+        scaleMethod(j) = "winsorized_std_sparse_guard";
+        safeguardTriggered(j) = true;
+    elseif isfinite(robustSc) && robustSc > params.preprocess_min_robust_scale
+        sc = robustSc;
+        scaleMethod(j) = "winsorized_iqr";
+    else
+        sc = stdSc;
+        scaleMethod(j) = "winsorized_std_low_iqr";
     end
     if ~(isfinite(sc) && sc > params.preprocess_min_robust_scale)
         Xproc(:, j) = 0;
@@ -198,14 +249,21 @@ for j = 1:d
         scale(j) = 1;
         winsorLow(j) = q(1);
         winsorHigh(j) = q(2);
+        scaleMethod(j) = "dropped_no_usable_spread";
         continue
     end
     x(~ok) = med;
-    Xproc(:, j) = (x - med) ./ sc;
+    z = (x - med) ./ sc;
+    Xproc(:, j) = z;
     center(j) = med;
     scale(j) = sc;
     winsorLow(j) = q(1);
     winsorHigh(j) = q(2);
+    standardizedStd(j) = std(z, 0, 'omitnan');
+    standardizedAbsP99(j) = prctile(abs(z), 99);
+    standardizedAbsMax(j) = max(abs(z), [], 'omitnan');
+    tailCount(j) = nnz(abs(z) > params.preprocess_tail_audit_abs_threshold);
+    severeTailCount(j) = nnz(abs(z) > params.preprocess_severe_tail_audit_abs_threshold);
 end
 
 keepMask = any(abs(Xproc) > 0, 1);
@@ -223,6 +281,31 @@ prep.n_input_dims = d;
 prep.n_kept_dims = nnz(keepMask);
 prep.finite_input_fraction = mean(isfinite(X), 'all');
 prep.labels_used_for_preprocessing = "none";
+
+diagnostic = table();
+diagnostic.input_dimension_index = (1:d)';
+diagnostic.kept_after_preprocess = keepMask(:);
+diagnostic.kept_dimension_index = nan(d, 1);
+diagnostic.kept_dimension_index(keepMask(:)) = (1:nnz(keepMask))';
+diagnostic.n_rows = repmat(n, d, 1);
+diagnostic.n_finite_input = finiteCount(:);
+diagnostic.finite_input_fraction = finiteCount(:) ./ max(n, 1);
+diagnostic.winsor_low = winsorLow(:);
+diagnostic.winsor_high = winsorHigh(:);
+diagnostic.winsorized_median = center(:);
+diagnostic.winsorized_iqr = winsorIqr(:);
+diagnostic.winsorized_std = winsorStd(:);
+diagnostic.iqr_to_std_ratio = iqrToStdRatio(:);
+diagnostic.selected_scale = scale(:);
+diagnostic.scale_method = scaleMethod(:);
+diagnostic.sparse_scale_safeguard_triggered = safeguardTriggered(:);
+diagnostic.standardized_std = standardizedStd(:);
+diagnostic.standardized_abs_p99 = standardizedAbsP99(:);
+diagnostic.standardized_abs_max = standardizedAbsMax(:);
+diagnostic.n_abs_gt_tail_threshold = tailCount(:);
+diagnostic.fraction_abs_gt_tail_threshold = tailCount(:) ./ max(n, 1);
+diagnostic.n_abs_gt_severe_tail_threshold = severeTailCount(:);
+diagnostic.fraction_abs_gt_severe_tail_threshold = severeTailCount(:) ./ max(n, 1);
 end
 
 function [scoreOut, center, scale] = local_prepare_scores_for_global(score, params)
@@ -266,12 +349,32 @@ switch string(params.scale_weight_mode)
 end
 end
 
-function row = local_pca_audit_row(S, guidance, role, targetPcs, capPcs, nPC, explained, prep)
+function row = local_pca_audit_row(S, guidance, role, targetPcs, capPcs, nPC, explained, prep, coeff, dimKept)
 row = table();
 row.scale_index = S.scale_index;
 row.chunk_sec = S.chunk_sec;
 row.hierarchical_role = role;
 row.n_input_rows = size(S.X, 1);
+if ismember('anchor_manifest_mode', S.rowMeta.Properties.VariableNames)
+    row.anchor_manifest_mode = strjoin(unique(string(S.rowMeta.anchor_manifest_mode), 'stable'), ";");
+else
+    row.anchor_manifest_mode = "primary";
+end
+if ismember('anchor_stage', S.rowMeta.Properties.VariableNames)
+    stage = string(S.rowMeta.anchor_stage);
+    row.n_base_rows = nnz(stage == "base_time_even");
+    row.n_rare_enriched_rows = nnz(stage == "rare_strata_enriched");
+else
+    row.n_base_rows = size(S.X, 1);
+    row.n_rare_enriched_rows = 0;
+end
+if ismember('audit_inverse_probability_weight', S.rowMeta.Properties.VariableNames)
+    row.audit_inverse_probability_effective_sample_size = ...
+        local_effective_sample_size(double(S.rowMeta.audit_inverse_probability_weight));
+else
+    row.audit_inverse_probability_effective_sample_size = size(S.X, 1);
+end
+row.weights_used_for_pca = false;
 row.n_input_dims = size(S.X, 2);
 row.n_kept_dims_after_preprocess = prep.n_kept_dims;
 row.input_finite_fraction = prep.finite_input_fraction;
@@ -280,17 +383,221 @@ row.run07_role_pc_cap = capPcs;
 row.n_pcs_selected = nPC;
 row.pc1_explained = explained(1);
 row.cum5_explained = sum(explained(1:min(5, numel(explained))));
-row.cum_selected_explained = sum(explained);
+row.cum_selected_explained = sum(explained(1:min(nPC, numel(explained))));
+[topLoading, topFeature, topKind, topDct, topDim] = ...
+    local_pc1_loading_dominance(coeff, dimKept);
+row.pc1_top_dimension_loading_fraction = topLoading;
+row.pc1_top_base_feature = topFeature;
+row.pc1_top_summary_kind = topKind;
+row.pc1_top_dct_coefficient = topDct;
+row.pc1_top_embedding_feature_index = topDim;
 if ismember('n_pcs_90pct', guidance.Properties.VariableNames)
     row.run06_n_pcs_90pct = double(guidance.n_pcs_90pct(1));
 else
     row.run06_n_pcs_90pct = NaN;
+end
+if ismember('summary_profile', guidance.Properties.VariableNames)
+    row.run06_summary_profile = string(guidance.summary_profile(1));
+else
+    row.run06_summary_profile = "";
+end
+if ismember('n_temporal_bins', guidance.Properties.VariableNames)
+    row.run06_n_temporal_bins = double(guidance.n_temporal_bins(1));
+else
+    row.run06_n_temporal_bins = NaN;
+end
+if ismember('n_dct_coeffs', guidance.Properties.VariableNames)
+    row.run06_n_dct_coeffs = double(guidance.n_dct_coeffs(1));
+else
+    row.run06_n_dct_coeffs = NaN;
+end
+if ismember('n_summary_dims', guidance.Properties.VariableNames)
+    row.run06_summary_dims = double(guidance.n_summary_dims(1));
+else
+    row.run06_summary_dims = NaN;
 end
 row.reaches_run06_recommended_pc_count = nPC >= targetPcs;
 row.embedding_dimension_rule = "run06_embedding_dimension_audit_recommendation_with_predefined_run07_role_caps";
 row.labels_used_for_pca = "none";
 row.arena_used_for_pca = false;
 row.condition_used_for_pca = false;
+end
+
+function [topLoading, topFeature, topKind, topDct, topDim] = ...
+        local_pc1_loading_dominance(coeff, dimMeta)
+topLoading = NaN;
+topFeature = "";
+topKind = "";
+topDct = NaN;
+topDim = NaN;
+if isempty(coeff) || isempty(dimMeta)
+    return
+end
+energy = double(coeff(:, 1)).^2;
+denom = sum(energy, 'omitnan');
+if ~(isfinite(denom) && denom > 0)
+    return
+end
+[topLoading, idx] = max(energy ./ denom);
+topFeature = local_table_string_value(dimMeta, 'base_feature', idx);
+topKind = local_table_string_value(dimMeta, 'summary_kind', idx);
+topDct = local_table_numeric_value(dimMeta, 'dct_coefficient', idx);
+topDim = local_table_numeric_value(dimMeta, 'embedding_feature_index', idx);
+end
+
+function T = local_preprocess_dimension_audit(S, diagnostic, params)
+n = height(diagnostic);
+assert(height(S.dimMeta) == n, ...
+    'fit_condition_blind_embedding_pca:PreprocessAuditDimensionMismatch', ...
+    'Scale %.4g s preprocessing audit has %d dimensions but dimMeta has %d rows.', ...
+    S.chunk_sec, n, height(S.dimMeta));
+
+T = table();
+T.scale_index = repmat(S.scale_index, n, 1);
+T.chunk_sec = repmat(S.chunk_sec, n, 1);
+T.hierarchical_role = repmat(string(S.hierarchical_role), n, 1);
+T.embedding_feature_index = local_table_numeric_column(S.dimMeta, 'embedding_feature_index', n);
+T.summary_dim_index = local_table_numeric_column(S.dimMeta, 'summary_dim_index', n);
+T.obs_name = local_table_string_column(S.dimMeta, 'obs_name', n);
+T.base_feature = local_table_string_column(S.dimMeta, 'base_feature', n);
+T.channel_type = local_table_string_column(S.dimMeta, 'channel_type', n);
+T.summary_kind = local_table_string_column(S.dimMeta, 'summary_kind', n);
+T.temporal_bin = local_table_numeric_column(S.dimMeta, 'temporal_bin', n);
+T.dct_coefficient = local_table_numeric_column(S.dimMeta, 'dct_coefficient', n);
+T.feature_family = local_table_string_column(S.dimMeta, 'feature_family', n);
+T.unit = local_table_string_column(S.dimMeta, 'unit', n);
+T.summary_profile = local_table_string_column(S.dimMeta, 'summary_profile', n);
+T = [T, diagnostic];
+T.sparse_scale_safeguard_enabled = repmat( ...
+    logical(params.preprocess_sparse_scale_safeguard_enabled), n, 1);
+T.min_iqr_to_std_ratio = repmat(params.preprocess_min_iqr_to_std_ratio, n, 1);
+T.tail_abs_threshold = repmat(params.preprocess_tail_audit_abs_threshold, n, 1);
+T.severe_tail_abs_threshold = repmat(params.preprocess_severe_tail_audit_abs_threshold, n, 1);
+T.scale_selection_rule = repmat( ...
+    "winsorized_iqr_unless_low_absolute_spread_or_condition_blind_iqr_to_std_sparse_guard", n, 1);
+T.labels_used_for_preprocessing = repmat("none", n, 1);
+T.arena_used_for_preprocessing = false(n, 1);
+T.condition_used_for_preprocessing = false(n, 1);
+end
+
+function row = local_anchor_stage_pca_sensitivity(Xproc, S, role, nPC, combinedCoeff, combinedExplained, params)
+row = table();
+row.scale_index = S.scale_index;
+row.chunk_sec = S.chunk_sec;
+row.hierarchical_role = role;
+row.n_combined_rows = size(Xproc, 1);
+row.n_base_rows = 0;
+row.n_rare_enriched_rows = 0;
+row.n_pcs_compared = 0;
+row.combined_pc1_explained = combinedExplained(1);
+row.combined_cum_compared_explained = NaN;
+row.base_pc1_explained = NaN;
+row.base_cum_compared_explained = NaN;
+row.rare_enriched_pc1_explained = NaN;
+row.rare_enriched_cum_compared_explained = NaN;
+row.combined_vs_base_subspace_similarity = NaN;
+row.combined_vs_rare_enriched_subspace_similarity = NaN;
+row.base_vs_rare_enriched_subspace_similarity = NaN;
+row.combined_vs_base_pc1_abs_alignment = NaN;
+row.combined_vs_rare_enriched_pc1_abs_alignment = NaN;
+row.base_vs_rare_enriched_pc1_abs_alignment = NaN;
+row.audit_status = "not_applicable_no_anchor_stage";
+
+if ~ismember('anchor_stage', S.rowMeta.Properties.VariableNames)
+    row = local_finish_anchor_stage_audit(row);
+    return
+end
+stage = string(S.rowMeta.anchor_stage);
+base = stage == "base_time_even";
+rare = stage == "rare_strata_enriched";
+row.n_base_rows = nnz(base);
+row.n_rare_enriched_rows = nnz(rare);
+if nnz(base) < 5 || nnz(rare) < 5
+    row.audit_status = "not_applicable_requires_base_and_rare_enriched_rows";
+    row = local_finish_anchor_stage_audit(row);
+    return
+end
+
+k = min([params.enrichment_sensitivity_n_pcs_compared, nPC, ...
+    nnz(base) - 1, nnz(rare) - 1, size(Xproc, 2), size(combinedCoeff, 2)]);
+if k < 1
+    row.audit_status = "not_applicable_no_comparable_pcs";
+    row = local_finish_anchor_stage_audit(row);
+    return
+end
+
+[baseCoeff, ~, baseLatent] = pca(Xproc(base, :), 'NumComponents', k);
+[rareCoeff, ~, rareLatent] = pca(Xproc(rare, :), 'NumComponents', k);
+baseExplained = local_explained_from_latent(baseLatent, Xproc(base, :));
+rareExplained = local_explained_from_latent(rareLatent, Xproc(rare, :));
+
+row.n_pcs_compared = k;
+row.combined_cum_compared_explained = sum(combinedExplained(1:min(k, numel(combinedExplained))));
+row.base_pc1_explained = baseExplained(1);
+row.base_cum_compared_explained = sum(baseExplained(1:min(k, numel(baseExplained))));
+row.rare_enriched_pc1_explained = rareExplained(1);
+row.rare_enriched_cum_compared_explained = sum(rareExplained(1:min(k, numel(rareExplained))));
+row.combined_vs_base_subspace_similarity = local_subspace_similarity(combinedCoeff, baseCoeff, k);
+row.combined_vs_rare_enriched_subspace_similarity = local_subspace_similarity(combinedCoeff, rareCoeff, k);
+row.base_vs_rare_enriched_subspace_similarity = local_subspace_similarity(baseCoeff, rareCoeff, k);
+row.combined_vs_base_pc1_abs_alignment = abs(combinedCoeff(:, 1)' * baseCoeff(:, 1));
+row.combined_vs_rare_enriched_pc1_abs_alignment = abs(combinedCoeff(:, 1)' * rareCoeff(:, 1));
+row.base_vs_rare_enriched_pc1_abs_alignment = abs(baseCoeff(:, 1)' * rareCoeff(:, 1));
+row.audit_status = "complete";
+row = local_finish_anchor_stage_audit(row);
+end
+
+function row = local_finish_anchor_stage_audit(row)
+row.preprocessing_fit_scope = "combined_condition_blind_anchor_bank";
+row.comparison_fit_scope = "audit_only_base_and_rare_enriched_unweighted_pca";
+row.anchor_stage_used_for_primary_pca = false;
+row.audit_only_not_selection = true;
+row.labels_used_for_stage_sensitivity = "none";
+row.arena_used_for_stage_sensitivity = false;
+row.condition_used_for_stage_sensitivity = false;
+end
+
+function similarity = local_subspace_similarity(coeffA, coeffB, k)
+singularVals = svd(coeffA(:, 1:k)' * coeffB(:, 1:k));
+similarity = mean(singularVals, 'omitnan');
+end
+
+function values = local_table_string_column(T, name, n)
+if ismember(name, T.Properties.VariableNames)
+    values = string(T.(name));
+else
+    values = repmat("", n, 1);
+end
+values = values(:);
+end
+
+function values = local_table_numeric_column(T, name, n)
+if ismember(name, T.Properties.VariableNames)
+    values = double(T.(name));
+else
+    values = nan(n, 1);
+end
+values = values(:);
+end
+
+function value = local_table_string_value(T, name, idx)
+values = local_table_string_column(T, name, height(T));
+value = values(idx);
+end
+
+function value = local_table_numeric_value(T, name, idx)
+values = local_table_numeric_column(T, name, height(T));
+value = values(idx);
+end
+
+function ess = local_effective_sample_size(w)
+w = double(w(:));
+w = w(isfinite(w) & w > 0);
+if isempty(w)
+    ess = NaN;
+else
+    ess = sum(w).^2 ./ sum(w.^2);
+end
 end
 
 function row = local_scale_weight_row(S, role, nPC, scaleWeight, params)

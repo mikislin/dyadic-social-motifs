@@ -18,6 +18,8 @@ verifyEqual(testCase, params.anchor_selection_rule, ...
     "dyad.frameMask + transformed feature availability + fixed stride + deterministic time-even materialization; no condition cohort arena drug genotype or outcome labels");
 verifyTrue(testCase, any(params.run_mode == ["smoke", "full"]));
 verifyEqual(testCase, params.output_dir, "derived/chunks_motif_discovery_smoke");
+verifyEqual(testCase, params.anchor_manifest_mode, "primary");
+verifyEqual(testCase, params.rare_enriched_target_anchors_per_scale, 4000);
 verifyFalse(testCase, params.allow_smoke_production_output);
 verifyFalse(testCase, params.save_chunk_mat_artifact);
 verifyTrue(testCase, params.use_scale_summary_shards);
@@ -182,6 +184,7 @@ verifyTrue(testCase, contains(runnerText, "arena_sensitivity_audit.csv"));
 verifyTrue(testCase, contains(runnerText, "n_common_all_scale_candidate_anchors"));
 verifyTrue(testCase, contains(runnerText, "SmokeProductionOutputBlocked"));
 verifyTrue(testCase, contains(runnerText, "save_chunk_mat_artifact"));
+verifyTrue(testCase, contains(runnerText, "build_rare_enriched_primary_anchor_manifest"));
 verifyTrue(testCase, contains(runnerText, "Skipped ignored MAT artifact by config"));
 verifyTrue(testCase, contains(figureText, "scale_specific_anchor_coverage_audit"));
 verifyTrue(testCase, contains(figureText, "embedding_dimension_audit"));
@@ -206,6 +209,7 @@ files = [
     string(fullfile(repoRoot, 'chunks', 'summarize_multiresolution_chunks.m'))
     string(fullfile(repoRoot, 'chunks', 'build_primary_scale_specific_anchor_manifest.m'))
     string(fullfile(repoRoot, 'chunks', 'summarize_primary_chunk_events.m'))
+    string(fullfile(repoRoot, 'chunks', 'build_rare_enriched_primary_anchor_manifest.m'))
     string(fullfile(repoRoot, 'chunks', 'make_run06_chunk_qc_figures.m'))
     string(fullfile(repoRoot, 'scaleinfo', 'score_multiscale_chunk_bank.m'))
     string(fullfile(repoRoot, 'scaleinfo', 'estimate_scale_selection_stability.m'))

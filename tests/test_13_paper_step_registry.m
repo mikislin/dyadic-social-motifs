@@ -33,19 +33,19 @@ verifyEqual(testCase, registry.full_env(registry.step_id == "run_05"), ...
     "RUN05_FEATURE_RUN_MODE=full");
 verifyTrue(testCase, registry.smoke_safe(registry.step_id == "run_06"));
 verifyEqual(testCase, registry.smoke_env(registry.step_id == "run_06"), ...
-    "RUN06_CHUNK_RUN_MODE=smoke;RUN06_CHUNK_OUTPUT_DIR=derived/chunks_motif_discovery_smoke");
+    "RUN06_ANCHOR_MANIFEST_MODE=primary;RUN06_CHUNK_RUN_MODE=smoke;RUN06_CHUNK_OUTPUT_DIR=derived/chunks_motif_discovery_smoke");
 verifyEqual(testCase, registry.full_env(registry.step_id == "run_06"), ...
-    "RUN06_CHUNK_RUN_MODE=full;RUN06_CHUNK_OUTPUT_DIR=derived/chunks_motif_discovery");
+    "RUN06_ANCHOR_MANIFEST_MODE=primary;RUN06_CHUNK_RUN_MODE=full;RUN06_CHUNK_OUTPUT_DIR=derived/chunks_motif_discovery");
 verifyTrue(testCase, registry.smoke_safe(registry.step_id == "run_07"));
 verifyEqual(testCase, registry.smoke_env(registry.step_id == "run_07"), ...
-    "RUN07_EMBEDDING_RUN_MODE=smoke;RUN07_EMBEDDING_OUTPUT_DIR=derived/embedding_motif_discovery_smoke");
+    "RUN07_ANCHOR_MANIFEST_MODE=primary;RUN07_EMBEDDING_RUN_MODE=smoke;RUN07_EMBEDDING_OUTPUT_DIR=derived/embedding_motif_discovery_smoke");
 verifyEqual(testCase, registry.full_env(registry.step_id == "run_07"), ...
-    "RUN07_EMBEDDING_RUN_MODE=full;RUN07_EMBEDDING_OUTPUT_DIR=derived/embedding_motif_discovery");
+    "RUN07_ANCHOR_MANIFEST_MODE=primary;RUN07_EMBEDDING_RUN_MODE=full;RUN07_EMBEDDING_OUTPUT_DIR=derived/embedding_motif_discovery");
 verifyTrue(testCase, registry.smoke_safe(registry.step_id == "run_08"));
 verifyEqual(testCase, registry.smoke_env(registry.step_id == "run_08"), ...
-    "RUN08_GRAPH_RUN_MODE=smoke;RUN08_GRAPH_OUTPUT_DIR=derived/graph_motif_discovery_smoke;RUN08_EMBEDDING_INPUT_DIR=derived/embedding_motif_discovery_smoke");
+    "RUN08_ANCHOR_MANIFEST_MODE=primary;RUN08_GRAPH_RUN_MODE=smoke;RUN08_GRAPH_OUTPUT_DIR=derived/graph_motif_discovery_smoke;RUN08_EMBEDDING_INPUT_DIR=derived/embedding_motif_discovery_smoke");
 verifyEqual(testCase, registry.full_env(registry.step_id == "run_08"), ...
-    "RUN08_GRAPH_RUN_MODE=full;RUN08_GRAPH_OUTPUT_DIR=derived/graph_motif_discovery;RUN08_EMBEDDING_INPUT_DIR=derived/embedding_motif_discovery");
+    "RUN08_ANCHOR_MANIFEST_MODE=primary;RUN08_GRAPH_RUN_MODE=full;RUN08_GRAPH_OUTPUT_DIR=derived/graph_motif_discovery;RUN08_EMBEDDING_INPUT_DIR=derived/embedding_motif_discovery");
 end
 
 function testStepCallAuditToolExists(testCase)

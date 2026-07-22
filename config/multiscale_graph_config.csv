@@ -1,12 +1,16 @@
 parameter,value,type,env_override,description
 run_mode,smoke,string,RUN08_GRAPH_RUN_MODE,Run mode for run_08: smoke or full.
 output_dir,derived/graph_motif_discovery_smoke,string,RUN08_GRAPH_OUTPUT_DIR,Output directory relative to repo root for graph/topology outputs.
+anchor_manifest_mode,primary,string,RUN08_ANCHOR_MANIFEST_MODE,Run_08 input mode: primary preserves the baseline graph path and rare_enriched reads the separate enriched run_07 scores.
 embedding_input_dir,derived/embedding_motif_discovery_smoke,string,RUN08_EMBEDDING_INPUT_DIR,Run_07 embedding output directory containing condition-blind global scores.
+baseline_graph_input_dir,derived/graph_motif_discovery,string,RUN08_BASELINE_GRAPH_INPUT_DIR,Locked unbiased full run_08 root used only for baseline-versus-enriched coverage audits.
 embedding_scores_file,embedding_global_scores.csv,string,,Run_07 condition-blind score table.
 embedding_row_manifest_file,embedding_row_manifest.csv,string,,Run_07 row manifest used only for post-fit arena and event matching audits.
 embedding_input_scale_audit_file,embedding_input_scale_audit.csv,string,,Run_07 input scale audit used to resolve the run_06 event-summary source.
 embedding_feature_dictionary_file,embedding_feature_dictionary.csv,string,,Run_07 embedding feature dictionary for event-summary provenance.
+embedding_model_mat_file,condition_blind_embedding_model.mat,string,,Run_07 model containing global PCA explained-variance metadata.
 primary_event_summary_file,primary_chunk_event_summary_audit.csv,string,,Run_06 primary event summary used for condition-blind rare/social event coverage audits.
+expanded_event_summary_file,expanded_primary_chunk_event_summary_audit.csv,string,,Run_06 expanded event summary used in rare_enriched mode.
 graph_model_mat_file,condition_blind_motif_graph_model.mat,string,RUN08_GRAPH_MODEL_MAT_FILE,Ignored MAT artifact containing graph model arrays and audits.
 graph_n_pcs,24,number,RUN08_GRAPH_N_PCS,Number of leading run_07 global PCs used to build the kNN graph.
 k_neighbors,30,number,RUN08_K_NEIGHBORS,Primary k for directed nearest-neighbor graph construction.
@@ -16,11 +20,26 @@ standardize_graph_scores,true,logical,RUN08_STANDARDIZE_GRAPH_SCORES,Robust-stan
 graph_score_winsor_abs,8,number,RUN08_GRAPH_SCORE_WINSOR_ABS,Condition-blind absolute cap on robust-standardized graph input scores.
 min_event_valid_fraction,0.5,number,RUN08_MIN_EVENT_VALID_FRACTION,Minimum event-valid fraction before a row contributes to rare/social event coverage.
 high_quantile_threshold,0.9,number,RUN08_HIGH_QUANTILE_THRESHOLD,Within-scale quantile used for high-speed and high-turn event audits.
+rare_low_density_quantile,0.9,number,RUN08_RARE_LOW_DENSITY_QUANTILE,Within-scale kNN-radius quantile defining the condition-blind low-density tail.
+rare_periphery_indegree_quantile,0.1,number,RUN08_RARE_PERIPHERY_INDEGREE_QUANTILE,Within-scale in-degree quantile defining graph periphery.
+rare_undercovered_cell_quantile,0.1,number,RUN08_RARE_UNDERCOVERED_CELL_QUANTILE,Within-scale scale-session support quantile defining under-covered cells.
+audit_random_seed,108,number,RUN08_AUDIT_RANDOM_SEED,Fixed seed for all run_08 sensitivity panels and deterministic audit sampling.
+audit_session_excluded_enabled,true,logical,RUN08_SESSION_EXCLUDED_ENABLED,Build an audit-only numeric kNN sensitivity that excludes same-session candidates.
+audit_persist_session_excluded_edges,true,logical,RUN08_PERSIST_SESSION_EXCLUDED_EDGES,Persist the audit-only session-excluded directed edge list for reviewer reproduction.
+audit_resample_replicates,8,number,RUN08_RESAMPLE_REPLICATES,Number of dimension and session resampling replicates for neighborhood-retention audits.
+audit_resample_panel_max_nodes,8000,number,RUN08_RESAMPLE_PANEL_MAX_NODES,Maximum nodes in the fixed-seed scale-balanced neighborhood-stability audit panel.
+audit_resample_dimension_fraction,0.8,number,RUN08_RESAMPLE_DIMENSION_FRACTION,Fraction of numeric graph PCs retained in each dimension-subsampling replicate.
+audit_resample_session_fraction,0.8,number,RUN08_RESAMPLE_SESSION_FRACTION,Fraction of provenance sessions retained in each audit-only session-subsampling replicate.
+umap_enabled,true,logical,RUN08_UMAP_ENABLED,Generate deterministic condition-blind UMAP coordinates for visualization only.
+umap_max_nodes,60000,number,RUN08_UMAP_MAX_NODES,Maximum graph nodes included in UMAP; current full enriched bank remains unsampled.
+umap_num_epochs,100,number,RUN08_UMAP_NUM_EPOCHS,Optimization epochs for each visualization-only UMAP fit.
+umap_random_seed,108,number,RUN08_UMAP_RANDOM_SEED,Fixed seed for reproducible UMAP 2D and 3D coordinates.
+umap_embedding_density,1,number,RUN08_UMAP_EMBEDDING_DENSITY,MATLAB UMAP embedding-density setting used without labels.
 figure_export_png,true,logical,RUN08_FIGURE_EXPORT_PNG,Write PNG copies of run_08 QC figures.
 figure_export_pdf,true,logical,RUN08_FIGURE_EXPORT_PDF,Write PDF copies of run_08 QC figures.
 figure_dpi,320,number,RUN08_FIGURE_DPI,PNG export resolution for run_08 QC figures.
 figure_font_name,Arial,string,RUN08_FIGURE_FONT_NAME,Figure font name.
 figure_font_size,9,number,RUN08_FIGURE_FONT_SIZE,Base figure font size.
 graph_rule,exact k-nearest-neighbor graph on run_07 global PCs only,string,,Graph construction rule; no labels or post-fit audits enter neighbors.
-event_coverage_rule,post-fit condition-blind event coverage audit after graph construction from run_06 primary event summaries,string,,Rare/social event coverage is audited after graph construction and does not change graph edges.
+event_coverage_rule,post-fit condition-blind event coverage audit after graph construction from the active run_06 event summary,string,,Rare/social event coverage is audited after graph construction and does not change graph edges.
 label_exclusion_rule,no condition cohort group drug genotype outcome or arena labels enter graph construction topology sensitivity or graph input score preprocessing,string,,Non-bypassable label exclusion rule for run_08.
