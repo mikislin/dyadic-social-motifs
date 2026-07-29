@@ -1,0 +1,243 @@
+function outputs = prepare_blinded_motif_candidate_video_review(repoRoot, opts)
+%PREPARE_BLINDED_MOTIF_CANDIDATE_VIDEO_REVIEW Build pre-run_10 review media.
+%
+% This is validation preparation, not a registered paper-analysis stage.
+% It cannot alter run_09 membership, interpretation eligibility, hierarchy,
+% provisional annotation, or any experimental comparison.
+
+if nargin < 1 || strlength(string(repoRoot)) == 0
+    repoRoot = fileparts(fileparts(mfilename('fullpath')));
+end
+if nargin < 2 || isempty(opts)
+    opts = struct();
+end
+if ~isfield(opts, 'configPath') || strlength(string(opts.configPath)) == 0
+    opts.configPath = fullfile(repoRoot, 'config', ...
+        'motif_candidate_video_review_config.csv');
+end
+
+repoRoot = string(repoRoot);
+addpath(genpath(repoRoot));
+params = load_motif_candidate_video_review_config(opts.configPath);
+outRoot = string(resolve_repo_path(repoRoot, params.output_dir));
+i_make_dir(outRoot);
+i_make_dir(fullfile(outRoot, 'logs'));
+diary(fullfile(outRoot, 'logs', ...
+    'pre_run10_blinded_motif_candidate_video_review_latest.log'));
+diaryCleanup = onCleanup(@() diary('off'));
+
+fprintf('pre_run10 blinded motif-candidate video review preparation\n');
+fprintf('Run mode: %s\n', params.run_mode);
+fprintf('Frozen run_09 root: %s\n', ...
+    resolve_repo_path(repoRoot, params.run09_output_dir));
+fprintf('Output root: %s\n', outRoot);
+
+write_table_atomic(i_parameter_audit(params), ...
+    fullfile(outRoot, params.parameter_audit_file));
+[Selection, CandidateSummary] = ...
+    select_blinded_motif_candidate_video_examples(repoRoot, params);
+write_table_atomic(Selection, fullfile(outRoot, params.selection_file));
+write_table_atomic(CandidateSummary, ...
+    fullfile(outRoot, params.candidate_summary_file));
+
+SourceManifest = i_source_manifest(repoRoot, Selection);
+write_table_atomic(SourceManifest, ...
+    fullfile(outRoot, params.source_manifest_file));
+RenderAudit = render_blinded_motif_candidate_video_mosaics( ...
+    repoRoot, Selection, CandidateSummary, outRoot, params);
+write_table_atomic(RenderAudit, ...
+    fullfile(outRoot, params.render_audit_file));
+
+OutputManifest = i_output_manifest( ...
+    repoRoot, outRoot, params, RenderAudit);
+write_table_atomic(OutputManifest, ...
+    fullfile(outRoot, params.output_manifest_file));
+assert(all(RenderAudit.render_status == "success"), ...
+    'prepare_blinded_motif_candidate_video_review:RenderFailure', ...
+    'At least one candidate mosaic failed; inspect the render audit.');
+
+fprintf('Candidates rendered: %d | selected clips: %d\n', ...
+    height(CandidateSummary), height(Selection));
+fprintf('Selection manifest: %s\n', ...
+    fullfile(outRoot, params.selection_file));
+fprintf('Render audit: %s\n', ...
+    fullfile(outRoot, params.render_audit_file));
+
+outputs = struct();
+outputs.output_root = outRoot;
+outputs.selection_path = fullfile(outRoot, params.selection_file);
+outputs.candidate_summary_path = fullfile(outRoot, ...
+    params.candidate_summary_file);
+outputs.render_audit_path = fullfile(outRoot, params.render_audit_file);
+outputs.output_manifest_path = fullfile(outRoot, ...
+    params.output_manifest_file);
+outputs.n_candidates = height(CandidateSummary);
+outputs.n_selected_examples = height(Selection);
+outputs.all_renders_successful = all( ...
+    RenderAudit.render_status == "success");
+outputs.candidate_freeze_id = params.expected_candidate_freeze_id;
+outputs.membership_sha256 = params.expected_membership_sha256;
+end
+
+function T = i_parameter_audit(params)
+C = params.config_table;
+T = table(string(C.parameter), string(C.effective_value), ...
+    string(C.env_override), logical(C.env_override_used), ...
+    string(C.description), ...
+    'VariableNames', {'parameter', 'effective_value', 'env_override', ...
+    'env_override_used', 'description'});
+end
+
+function Manifest = i_source_manifest(repoRoot, Selection)
+allSourceFiles = string(Selection.preprocess_output_file);
+[sourceFiles, firstLoc] = unique(allSourceFiles, 'stable');
+[present, group] = ismember(allSourceFiles, sourceFiles);
+assert(all(present), ...
+    'prepare_blinded_motif_candidate_video_review:SourceGroupingFailed', ...
+    'Every selected pose file must map to the source manifest.');
+n = numel(sourceFiles);
+rawIndex = zeros(n, 1);
+sessionIndex = zeros(n, 1);
+sessionId = strings(n, 1);
+selectedExampleCount = zeros(n, 1);
+fileBytes = zeros(n, 1);
+sha256 = strings(n, 1);
+absolutePath = strings(n, 1);
+for i = 1:n
+    row = firstLoc(i);
+    rawIndex(i) = Selection.raw_index(row);
+    sessionIndex(i) = Selection.session_index(row);
+    sessionId(i) = Selection.session_id(row);
+    selectedExampleCount(i) = nnz(group == i);
+    absolutePath(i) = string(resolve_repo_path( ...
+        repoRoot, sourceFiles(i)));
+    [sha256(i), fileBytes(i)] = compute_file_sha256(absolutePath(i));
+end
+Manifest = table(rawIndex, sessionIndex, sessionId, sourceFiles, ...
+    absolutePath, selectedExampleCount, fileBytes, sha256, ...
+    repmat("preprocessed_pose_tracks_only", n, 1), ...
+    repmat("postfit_blinded_render_input", n, 1), ...
+    repmat("none", n, 1), ...
+    'VariableNames', {'raw_index', 'session_index', 'session_id', ...
+    'source_file', 'source_absolute_path', 'selected_example_count', ...
+    'file_bytes', 'sha256', 'source_content_used', 'source_role', ...
+    'experimental_labels_used'});
+end
+
+function Manifest = i_output_manifest(repoRoot, outRoot, params, RenderAudit)
+Manifest = i_empty_manifest();
+inputPaths = [ ...
+    fullfile(resolve_repo_path(repoRoot, params.run09_output_dir), ...
+        params.candidate_membership_file)
+    fullfile(resolve_repo_path(repoRoot, params.run09_output_dir), ...
+        params.candidate_ambiguity_file)
+    fullfile(resolve_repo_path(repoRoot, params.run09_output_dir), ...
+        params.candidate_topology_file)
+    fullfile(resolve_repo_path(repoRoot, params.run09_output_dir), ...
+        params.candidate_exemplar_file)
+    resolve_repo_path(repoRoot, params.run08_node_manifest_file)
+    resolve_repo_path(repoRoot, params.preprocess_qc_file)];
+inputRoles = [ ...
+    "frozen_candidate_membership"
+    "frozen_node_stability_and_boundary"
+    "graph_only_interpretation_eligibility"
+    "frozen_graph_central_exemplars"
+    "safe_column_node_provenance"
+    "safe_column_pose_file_provenance"];
+for i = 1:numel(inputPaths)
+    Manifest = [Manifest; i_manifest_row( ... %#ok<AGROW>
+        "input_artifact", string(i_file_name(inputPaths(i))), ...
+        inputPaths(i), inputRoles(i), params)];
+end
+
+sourcePaths = [ ...
+    string(params.config_path)
+    fullfile(repoRoot, 'paper', ...
+        'pre_run10_prepare_blinded_motif_candidate_video_review.m')
+    fullfile(repoRoot, 'validation', ...
+        'load_motif_candidate_video_review_config.m')
+    fullfile(repoRoot, 'validation', ...
+        'select_blinded_motif_candidate_video_examples.m')
+    fullfile(repoRoot, 'validation', ...
+        'render_blinded_motif_candidate_video_mosaics.m')
+    fullfile(repoRoot, 'validation', ...
+        'prepare_blinded_motif_candidate_video_review.m')];
+for i = 1:numel(sourcePaths)
+    Manifest = [Manifest; i_manifest_row( ... %#ok<AGROW>
+        "source_provenance", string(i_file_name(sourcePaths(i))), ...
+        sourcePaths(i), "pre_run10_blinded_review_source", params)];
+end
+
+outputNames = [ ...
+    params.parameter_audit_file
+    params.selection_file
+    params.candidate_summary_file
+    params.source_manifest_file
+    params.render_audit_file];
+outputRoles = [ ...
+    "effective_parameter_audit"
+    "frozen_blinded_example_selection"
+    "candidate_clip_and_sampling_summary"
+    "selected_pose_file_hash_manifest"
+    "video_and_contact_sheet_render_audit"];
+for i = 1:numel(outputNames)
+    Manifest = [Manifest; i_manifest_row( ... %#ok<AGROW>
+        "output_artifact", outputNames(i), ...
+        fullfile(outRoot, outputNames(i)), outputRoles(i), params)];
+end
+
+for i = 1:height(RenderAudit)
+    if strlength(RenderAudit.video_file(i)) > 0
+        Manifest = [Manifest; i_manifest_row( ... %#ok<AGROW>
+            "rendered_video", ...
+            i_file_name(RenderAudit.video_file(i)), ...
+            RenderAudit.video_file(i), ...
+            "blinded_pose_mosaic_not_final_figure", params)];
+    end
+    Manifest = [Manifest; i_manifest_row( ... %#ok<AGROW>
+        "rendered_contact_sheet", ...
+        i_file_name(RenderAudit.contact_sheet_file(i)), ...
+        RenderAudit.contact_sheet_file(i), ...
+        "blinded_anchor_frame_contact_sheet", params)];
+end
+end
+
+function row = i_manifest_row(recordType, artifactId, pathText, role, params)
+[hash, bytes] = compute_file_sha256(pathText);
+rowCount = NaN;
+if endsWith(lower(string(pathText)), ".csv")
+    rowCount = height(readtable(pathText, 'Delimiter', ','));
+end
+row = table(string(recordType), string(artifactId), string(pathText), ...
+    string(role), rowCount, bytes, hash, ...
+    params.expected_candidate_freeze_id, ...
+    params.expected_membership_sha256, true, false, false, "none", ...
+    'VariableNames', {'record_type', 'artifact_id', 'artifact_path', ...
+    'artifact_role', 'row_count', 'file_bytes', 'sha256', ...
+    'candidate_freeze_id', 'frozen_membership_sha256', ...
+    'generated_after_candidate_freeze', 'used_for_membership', ...
+    'used_for_interpretation_eligibility', 'experimental_labels_used'});
+end
+
+function T = i_empty_manifest()
+T = table(strings(0, 1), strings(0, 1), strings(0, 1), ...
+    strings(0, 1), nan(0, 1), nan(0, 1), strings(0, 1), ...
+    strings(0, 1), strings(0, 1), false(0, 1), false(0, 1), ...
+    false(0, 1), strings(0, 1), ...
+    'VariableNames', {'record_type', 'artifact_id', 'artifact_path', ...
+    'artifact_role', 'row_count', 'file_bytes', 'sha256', ...
+    'candidate_freeze_id', 'frozen_membership_sha256', ...
+    'generated_after_candidate_freeze', 'used_for_membership', ...
+    'used_for_interpretation_eligibility', 'experimental_labels_used'});
+end
+
+function value = i_file_name(pathText)
+[~, stem, ext] = fileparts(pathText);
+value = string(stem) + string(ext);
+end
+
+function i_make_dir(pathText)
+if ~isfolder(pathText)
+    mkdir(pathText);
+end
+end

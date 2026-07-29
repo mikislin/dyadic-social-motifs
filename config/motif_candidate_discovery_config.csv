@@ -1,0 +1,137 @@
+parameter,value,type,env_override,description
+run_mode,smoke,string,RUN09_CANDIDATE_RUN_MODE,Execution mode controlling ensemble size while preserving the complete frozen graph.
+input_dir,derived/graph_motif_discovery_rare_enriched,path,RUN09_FROZEN_INPUT_DIR,Read-only frozen run_08 handoff root used in both smoke and full modes.
+output_dir,derived/motif_candidate_discovery_smoke,path,RUN09_CANDIDATE_OUTPUT_DIR,Mode-routed run_09 output root.
+expected_freeze_id,run08_consensus_d48a1b618ae6_da79abad,string,,Required immutable run_08 consensus freeze identifier.
+expected_manifest_schema,run08_handoff_manifest_v2_byte_exact,string,,Required byte-exact handoff manifest schema.
+handoff_manifest_file,run08_to_run09_handoff_manifest.csv,string,,Run_08 handoff authority.
+node_input_file,run08_to_run09_node_input.csv,string,,Frozen stable-node input.
+edge_input_file,run08_to_run09_edge_list.csv,string,,Frozen unique undirected weighted-edge input.
+freeze_config_file,graph_consensus_freeze_config.csv,string,,Frozen run_08 consensus contract.
+topology_summary_file,graph_consensus_topology_summary.csv,string,,Frozen topology readiness summary.
+expected_node_hash,ded0bee566914ecb2647ba34072351ccb4a79187dfbbe93254ab5629e9fbf996,string,,Pinned byte-exact node-input SHA-256.
+expected_edge_hash,d48a1b618ae6410bc9e4d549676762880ebbf2f321875449ce1ea370323220c7,string,,Pinned byte-exact edge-input SHA-256.
+expected_freeze_config_hash,da79abad40fb9b7a0509f751656e4fcd6da1aff9bcbc9d61350d929e1caf1a74,string,,Pinned byte-exact freeze-config SHA-256.
+expected_topology_hash,9af41f73cec866dec8893046947b4ad4cbced01c74621937e38807df2b5e030d,string,,Pinned byte-exact topology-summary SHA-256.
+locked_candidate_freeze_id,run09_candidates_2e58d214683b_8817d942_0e956a2c,string,,Issued graph-membership freeze identifier that must remain stable across post-freeze audit-only additions.
+locked_candidate_membership_sha256,2e58d214683badb0b86e746bf32a7944da664b67243e778ea2d2638249268442,string,,Byte-exact frozen motif_candidate_node_membership.csv hash bound to the issued candidate freeze ID.
+expected_n_nodes,50548,number,,Required number of stable run_09 nodes.
+expected_n_edges,760383,number,,Required number of unique undirected run_09 edges.
+expected_n_components,1,number,,Required number of connected components.
+expected_minimum_degree,10,number,,Required minimum induced degree.
+backend_id,matlab_igraph_0_2_4_native_weighted_bridge,string,,Hash-pinned native bridge because the public matlab-igraph wrapper drops weights.
+expected_matlab_igraph_version,0.2.4,string,,Required matlab-igraph toolbox version.
+expected_igraph_core_version,0.10.16,string,,Required igraph C-core version.
+expected_dispatcher_sha256,e2cf88d69e49d91d7dfcc5ae93abdc30597997f296d46b440e4f162107e5680c,string,,Required Windows mexIgraphDispatcher SHA-256.
+primary_objective,cpm,string,,Primary weighted Leiden objective.
+cpm_resolution_rule,weighted_graph_density_times_predeclared_multiplier,string,,Condition-blind CPM grid construction rule.
+cpm_density_multipliers_full,0.5;0.75;1;1.5;2;3;4;6;8;12;16,number_list,,Full CPM density-multiplier grid.
+cpm_density_multipliers_smoke,0.5;0.75;1;1.5;2;3;4;6;8;12;16,number_list,,Full-grid pilot CPM multipliers using the complete frozen graph.
+cpm_seeds_full,910091;910092;910093;910094;910095;910096;910097;910098;910099;910100;910101;910102;910103;910104;910105;910106;910107;910108;910109;910110,number_list,,Twenty predeclared deterministic seeds per full CPM resolution.
+cpm_seeds_smoke,910091;910092,number_list,,Two predeclared deterministic smoke seeds.
+enable_modularity_challenger,true,logical,RUN09_ENABLE_MODULARITY_CHALLENGER,Run weighted Leiden modularity only as a topology challenger.
+modularity_resolutions_full,0.5;1;2,number_list,,Smaller canonical modularity resolution grid.
+modularity_resolutions_smoke,1,number_list,,Single smoke modularity resolution.
+modularity_seeds_full,920091;920092;920093;920094;920095,number_list,,Deterministic challenger seeds.
+modularity_seeds_smoke,920091,number_list,,Deterministic smoke challenger seed.
+leiden_randomness,0.01,number,,Leiden refinement beta.
+iteration_mode,until_membership_unchanged,string,,Repeat one native Leiden iteration until membership is unchanged.
+maximum_iterations,100,number,RUN09_MAXIMUM_LEIDEN_ITERATIONS,Fail a replicate that does not converge within this cap.
+require_all_replicates_converged,true,logical,,Production gate requiring convergence for every replicate.
+checkpoint_schema,run09_replicate_checkpoint_v1,string,,Schema for independently validated atomic per-replicate checkpoints.
+checkpoint_dir,replicate_checkpoints,path,,Output-local directory containing interruption-safe replicate checkpoints.
+reference_partition_rule,max_mean_pairwise_ari_then_quality_then_lowest_seed,string,,Topology-only deterministic representative replicate rule.
+retention_min_successful_replicates_smoke,2,number,,Pilot requires both predeclared seeds at every resolution.
+retention_min_successful_replicates_full,20,number,,Full analysis requires all twenty predeclared CPM seeds at every retained resolution.
+retention_min_pairwise_ari,0.8,number,,Minimum seed-pair adjusted Rand index for resolution retention.
+retention_max_normalized_vi,0.2,number,,Maximum seed-pair variation of information normalized by log node count.
+retention_min_candidate_count,2,number,,Minimum nondegenerate candidate count.
+retention_max_candidate_count,1000,number,,Maximum candidate count guarding pathological fragmentation.
+retention_max_candidate_count_relative_range,0.25,number,,Maximum replicate candidate-count range divided by the replicate median.
+retention_max_singleton_node_fraction,0.01,number,,Maximum node fraction assigned to singleton candidates in the representative partition.
+small_candidate_max_nodes,20,number,,Topology-only size defining a small candidate for audit and retention.
+retention_max_small_candidate_node_fraction,0.1,number,,Maximum node fraction assigned to candidates no larger than the configured small-candidate size.
+retention_min_mean_node_stability,0.8,number,,Minimum mean node coassignment Jaccard stability for resolution retention.
+ambiguity_min_node_stability,0.8,number,,Nodes below this mean coassignment Jaccard are flagged as ambiguous boundaries.
+hierarchy_min_child_parent_fraction,0.8,number,,Minimum child fraction contained in its best coarse parent for a candidate link.
+hierarchy_min_pair_weighted_child_purity,0.9,number,,Minimum node-weighted best-parent consistency for an adjacent resolution pair.
+hierarchy_min_linked_node_fraction,0.9,number,,Minimum node fraction in children passing the child-parent link gate.
+require_all_full_resolutions_pass_retention,false,logical,,Optional strict diagnostic gate disabled because the exploratory full grid is filtered by predeclared retention rules.
+require_at_least_one_full_resolution_retained,true,logical,,Fail closed before candidate freezing unless at least one full resolution passes every topology-only retention gate.
+enable_consensus_partition_smoke,false,logical,,Pilot reports raw-seed instability without treating a two-seed vote as production consensus.
+enable_consensus_partition_full,true,logical,,Full analysis builds label-aligned split-audited consensus partitions.
+consensus_partition_rule,label_aligned_plurality_vote_then_frozen_graph_leiden_refinement,string,,Consensus changes initialization only and refines on unchanged frozen endpoints and weights.
+consensus_split_rule,ascending_seed_odd_even,string,,Predeclared disjoint split of ordered seeds for consensus reproducibility.
+consensus_refinement_seed,930091,number,,Fixed seed for all full and split consensus refinements.
+consensus_checkpoint_schema,run09_consensus_checkpoint_v1,string,,Schema for atomic consensus-refinement checkpoints.
+consensus_checkpoint_dir,consensus_checkpoints,path,,Output-local directory for consensus refinement checkpoints.
+consensus_retention_min_split_ari,0.8,number,,Minimum ARI across full-versus-split and split-versus-split consensus comparisons.
+consensus_retention_max_normalized_vi,0.2,number,,Maximum normalized VI across consensus split comparisons.
+consensus_retention_min_mean_node_stability,0.8,number,,Minimum mean node Jaccard stability between full and split consensuses.
+consensus_retention_min_mean_vote_support,0.6,number,,Minimum mean aligned plurality support in the full consensus initialization.
+interpretation_eligibility_rule_version,run09_graph_interpretation_v1,string,,Frozen graph-only candidate interpretation eligibility contract defined before behavioral profiles.
+interpretation_retain_all_candidate_ids,true,logical,,Every frozen graph candidate ID is retained regardless of interpretation eligibility.
+postfreeze_merge_policy,prohibited_preserve_frozen_membership,string,,No candidate merge is permitted after the graph-derived membership freeze.
+postfreeze_split_policy,prohibited_preserve_frozen_membership,string,,No candidate split is permitted after the graph-derived membership freeze.
+interpretation_small_candidate_max_nodes,20,number,,Candidates at or below this graph-only size remain residual and are ineligible for behavioral interpretation.
+interpretation_min_mean_node_stability,0.8,number,,Minimum candidate mean split-consensus node stability for behavioral interpretation eligibility.
+interpretation_max_boundary_node_fraction,0.5,number,,Candidates with at least this fraction of ambiguous nodes are boundary-heavy and interpretation-ineligible.
+interpretation_max_weighted_conductance,0.5,number,,Maximum weighted conductance for a topologically coherent interpretation-eligible candidate.
+interpretation_min_largest_component_fraction,0.9,number,,Minimum fraction of candidate nodes in its largest induced connected component.
+interpretation_min_internal_edge_count,1,number,,Minimum internal frozen-graph edge count for interpretation eligibility.
+postfit_rule_version,run09_postfit_interpretation_v1,string,,Frozen post-fit audit profile exemplar and annotation contract.
+postfit_smoke_resolution_rule,lowest_configured_cpm_resolution_schema_audit_only,string,,Smoke-only deterministic single-resolution choice for exercising post-fit schemas; never used for the full candidate freeze.
+postfit_graph_node_manifest_file,graph_consensus_node_manifest.csv,string,,Run_08 node manifest read selectively for session composition only after membership and eligibility are frozen.
+postfit_embedding_input_dir,derived/embedding_motif_discovery_rare_enriched,path,,Run_07 condition-blind embedding root used only for post-fit behavioral profiles.
+postfit_summary_matrix_mat_file,condition_blind_embedding_summary_matrices.mat,string,,Run_07 condition-blind summary matrices used only after candidate membership is frozen.
+postfit_event_input_dir,derived/chunks_motif_discovery_rare_enriched,path,,Run_06 expanded-anchor root used only for post-fit event profiles.
+postfit_event_summary_file,expanded_primary_chunk_event_summary_audit.csv,string,,Run_06 condition-blind event summaries read selectively without experimental label columns.
+behavior_profile_summary_kind,mean,string,,Interpretable run_07 summary dimension retained for behavioral profiles.
+behavior_profile_source_tensor,condition_blind_scaled,string,,Condition-blind scaled behavioral tensor used for candidate profiles.
+profile_no_finite_fallback_rule,global_median_and_zero_standardized_effect,string,,Finite audit fallback for a candidate-feature cell with no finite observations; the status and finite count remain explicit.
+event_profile_feature_names,event_valid_fraction;contact_dwell_fraction;contact_transition_count;first_contact_latency_s;mutual_approach_dwell_fraction;withdrawal_dwell_fraction;approach_withdraw_transition_count;asym_positive_dwell_fraction;asym_negative_dwell_fraction;role_asymmetry_bias_mean;centroid_distance_mean_mm;centroid_distance_min_mm;centroid_distance_delta_mm;radial_speed_mean_mm_s;radial_speed_sign_change_count;approach1_positive_fraction;approach2_positive_fraction;role_approach_imbalance;mutual_facing_mean;heading_abs_change_deg;heading_large_turn_count,string,,Predeclared condition-blind event fields profiled after membership freeze.
+exemplar_selection_rule,stability_plus_within_candidate_internal_weighted_degree_rank,string,,Deterministic graph-only exemplar ranking rule fixed before behavioral interpretation.
+exemplar_count_per_candidate,5,number,,Maximum exemplars selected per retained candidate.
+exemplar_stability_weight,0.6,number,,Weight on node coassignment stability in exemplar score.
+exemplar_centrality_weight,0.4,number,,Weight on within-candidate internal weighted-degree percentile in exemplar score.
+annotation_rule_version,run09_provisional_social_annotation_v1,string,,Frozen provisional post-fit annotation rule.
+annotation_indicator_spec,event|contact_dwell_fraction|1|0.20;event|mutual_approach_dwell_fraction|1|0.15;event|mutual_facing_mean|1|0.15;event|centroid_distance_mean_mm|-1|0.15;event|centroid_distance_min_mm|-1|0.10;behavior|in_contact|1|0.10;behavior|close_pair|1|0.10;behavior|mutual_facing|1|0.05,string,,Predeclared condition-blind standardized profile indicators with direction and weight.
+annotation_min_complete_indicators,6,number,,Minimum number of finite predeclared indicators required for provisional classification.
+annotation_social_score_threshold,0.35,number,,Minimum weighted standardized evidence score for provisional social annotation.
+annotation_non_social_score_threshold,-0.35,number,,Maximum weighted standardized evidence score for provisional non-social annotation.
+annotation_eligible_candidates_only,true,logical,,Only graph-eligible candidates receive provisional behavioral interpretation.
+qc_top_profile_features,20,number,,Maximum behavioral features displayed in post-fit QC heatmaps.
+qc_figure_format,png,string,,Raster format for reviewer-auditable QC figures.
+qc_figure_directory,qc_figures,path,,Output-local directory for post-fit QC figures.
+paper_figure_raster_format,png,string,,High-resolution raster format for paper-facing run_09 figures.
+paper_figure_vector_format,pdf,string,,Vector companion format for paper-facing run_09 figures.
+paper_figure_raster_dpi,300,number,,Raster resolution for paper-facing figures.
+paper_figure_directory,paper_figures,path,,Output-local directory for paper-facing run_09 figures.
+parameter_audit_file,run09_parameter_audit.csv,string,,Effective and derived run_09 parameter audit.
+freeze_validation_file,run09_input_freeze_validation.csv,string,,Byte-exact and structural frozen-input validation.
+adapter_audit_file,run09_graph_adapter_audit.csv,string,,Strict graph-index and round-trip audit.
+node_index_file,run09_graph_node_index.csv,string,,Frozen graph-node to contiguous MATLAB index mapping with recomputed degrees.
+backend_audit_file,run09_backend_audit.csv,string,,Pinned backend identity and weighted runtime-probe audit.
+replicate_audit_file,run09_partition_replicate_audit.csv,string,,Every resolution-seed replicate and its quality runtime count and membership hash.
+membership_mat_file,run09_partition_ensemble_memberships.mat,string,,Ignored binary membership ensemble for downstream consensus and stability work.
+partition_stability_file,motif_candidate_partition_stability.csv,string,,Seed-pair ARI and variation-of-information audit.
+resolution_sensitivity_file,motif_candidate_resolution_sensitivity.csv,string,,Resolution quality fragmentation stability and predeclared retention gates.
+node_ambiguity_file,motif_candidate_node_ambiguity.csv,string,,Per-node coassignment stability and ambiguity scores.
+hierarchy_file,motif_candidate_hierarchy.csv,string,,Empirical adjacent-resolution parent-child links with unsupported links left unassigned.
+hierarchy_resolution_audit_file,motif_candidate_hierarchy_resolution_audit.csv,string,,All-resolution empirical nesting audit retained separately from the frozen candidate hierarchy.
+candidate_definition_file,motif_candidate_definition.csv,string,,Graph-partition candidate definitions and stability summaries.
+node_membership_file,motif_candidate_node_membership.csv,string,,Exactly one candidate per frozen node and active resolution.
+candidate_topology_audit_file,motif_candidate_topology_audit.csv,string,,Frozen-graph candidate conductance density volume degree fragmentation and interpretation-eligibility audit.
+objective_concordance_audit_file,motif_candidate_objective_concordance_audit.csv,string,,Audit-only retained CPM versus weighted modularity concordance and partition-topology comparison.
+scale_composition_audit_file,motif_candidate_scale_composition_audit.csv,string,,Post-fit candidate by scale composition and mixing audit that cannot change membership or eligibility.
+session_composition_audit_file,motif_candidate_session_composition_audit.csv,string,,Post-fit candidate by session composition and mixing audit that cannot change membership or eligibility.
+behavioral_profile_file,motif_candidate_behavioral_profile.csv,string,,Condition-blind behavioral summaries generated after candidate membership and eligibility are frozen.
+event_profile_file,motif_candidate_event_profile.csv,string,,Condition-blind event summaries generated after candidate membership and eligibility are frozen.
+exemplar_manifest_file,motif_candidate_exemplar_manifest.csv,string,,Deterministic exemplars selected from frozen membership stability and graph centrality only.
+annotation_file,motif_candidate_annotation.csv,string,,Provisional social non-social or indeterminate labels that cannot revise graph membership.
+annotation_provenance_file,motif_candidate_annotation_provenance.csv,string,,Separate rules sources hashes and freeze provenance for provisional annotations.
+qc_figure_manifest_file,run09_qc_figure_manifest.csv,string,,Hashes and scientific roles for post-fit QC figures.
+paper_figure_manifest_file,run09_paper_figure_manifest.csv,string,,Hashes and scientific roles for paper-facing run_09 figures.
+consensus_audit_file,run09_consensus_partition_audit.csv,string,,Full odd-split and even-split consensus refinement audit.
+consensus_mat_file,run09_consensus_partitions.mat,string,,Consensus memberships vote support and split stability arrays.
+output_manifest_file,run09_output_manifest.csv,string,,Reviewer-auditable frozen input config source contract and output hashes.

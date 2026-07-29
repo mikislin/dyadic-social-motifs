@@ -18,6 +18,13 @@
 %   Fast debug without writing figure files:
 %     setenv('RUN08_FIGURE_EXPORT_PNG','false');
 %     setenv('RUN08_FIGURE_EXPORT_PDF','false');
+%
+%   Continue only the consensus extension from an already completed full
+%   rare-enriched run_08 (run from the repo root):
+%     setenv('RUN08_ANCHOR_MANIFEST_MODE','rare_enriched');
+%     setenv('RUN08_GRAPH_RUN_MODE','full');
+%     setenv('RUN08_GRAPH_OUTPUT_DIR','');
+%     run_run08_consensus_extension_from_existing_outputs(string(pwd));
 
 % setenv('RUN08_ANCHOR_MANIFEST_MODE','rare_enriched');
 % setenv('RUN08_GRAPH_RUN_MODE','full');

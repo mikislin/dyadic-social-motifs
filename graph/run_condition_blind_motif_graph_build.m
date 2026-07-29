@@ -125,6 +125,17 @@ sensitivityAudit = build_condition_blind_graph_sensitivity_audits( ...
 fprintf('Building global PCA and visualization-only UMAP audits...\n');
 visualizationAudit = build_run08_embedding_visualization_audits( ...
     embeddingRoot, outRoot, X, nodeManifest, Graph, params);
+if logical(params.consensus_enabled)
+    fprintf('Building dimension-resampled consensus neighborhood and run_09 handoff...\n');
+    consensusAudit = build_condition_blind_consensus_neighborhood( ...
+        X, nodeManifest, Graph, eventNodeAudit, params, outRoot);
+else
+    consensusAudit = struct('handoffReady', false, 'nConsensusEdges', 0, ...
+        'selectedK', NaN, 'selectedThreshold', NaN, ...
+        'labels_used_for_consensus', "none", ...
+        'arena_used_for_consensus', false, ...
+        'condition_used_for_consensus', false);
+end
 
 GraphModel = struct();
 GraphModel.params = params;
@@ -156,6 +167,10 @@ GraphModel.sessionExcludedSensitivityAudit = sensitivityAudit.sessionSummary;
 GraphModel.neighborhoodResamplingAudit = sensitivityAudit.resampling;
 GraphModel.globalPcaVarianceAudit = visualizationAudit.globalVariance;
 GraphModel.umapStatusAudit = visualizationAudit.umapStatus;
+GraphModel.consensusHandoffReady = consensusAudit.handoffReady;
+GraphModel.consensusEdgeCount = consensusAudit.nConsensusEdges;
+GraphModel.consensusSelectedK = consensusAudit.selectedK;
+GraphModel.consensusSelectedThreshold = consensusAudit.selectedThreshold;
 GraphModel.labels_used_for_graph = "none";
 GraphModel.arena_used_for_graph = false;
 GraphModel.condition_used_for_graph = false;
@@ -180,6 +195,11 @@ fprintf('Wrote rare-strata composition audit: %s\n', paths.rareCompositionAudit)
 fprintf('Wrote rare-strata neighbor-retention audit: %s\n', paths.rareNeighborAudit);
 fprintf('Wrote baseline-versus-enriched coverage audit: %s\n', paths.baselineCoverageAudit);
 fprintf('Wrote event prevalence-fold audit: %s\n', paths.eventPrevalenceFoldAudit);
+if logical(params.consensus_enabled)
+    fprintf('Consensus handoff ready: %d | edges: %d | k: %d | support: %.3f\n', ...
+        consensusAudit.handoffReady, consensusAudit.nConsensusEdges, ...
+        consensusAudit.selectedK, consensusAudit.selectedThreshold);
+end
 fprintf('Wrote figure manifest: %s\n', paths.figureManifest);
 fprintf('Wrote ignored MAT artifact: %s\n', paths.graphModelMat);
 
@@ -197,6 +217,12 @@ outputs.rare_neighbor_retention_audit_path = string(paths.rareNeighborAudit);
 outputs.baseline_coverage_audit_path = string(paths.baselineCoverageAudit);
 outputs.figure_manifest_path = string(paths.figureManifest);
 outputs.graph_model_mat_path = string(paths.graphModelMat);
+outputs.consensus_handoff_ready = consensusAudit.handoffReady;
+outputs.consensus_edge_count = consensusAudit.nConsensusEdges;
+outputs.consensus_handoff_manifest_path = string(fullfile( ...
+    outRoot, 'run08_to_run09_handoff_manifest.csv'));
+outputs.run09_node_input_path = string(fullfile(outRoot, 'run08_to_run09_node_input.csv'));
+outputs.run09_edge_input_path = string(fullfile(outRoot, 'run08_to_run09_edge_list.csv'));
 end
 
 function paths = local_output_paths(outRoot, params)

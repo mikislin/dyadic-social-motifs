@@ -1,0 +1,44 @@
+parameter,value,type,env_override,description
+run_mode,smoke,string,PRE_RUN10_VIDEO_REVIEW_MODE,Smoke renders one eligible candidate while full renders every eligible candidate.
+run09_output_dir,derived/motif_candidate_discovery,path,,Read-only full run_09 output root containing the frozen candidate system.
+output_dir,derived/pre_run10_blinded_motif_candidate_video_review_smoke,path,PRE_RUN10_VIDEO_REVIEW_OUTPUT_DIR,Separate output root for blinded review preparation.
+preprocess_qc_file,derived/preprocess_qc/preprocess_qc_session_table.csv,path,,Preprocessing provenance used only to resolve pose files and validate frame bounds.
+run08_node_manifest_file,derived/graph_motif_discovery_rare_enriched/graph_consensus_node_manifest.csv,path,,Post-fit node provenance read through an explicit safe-column allowlist.
+candidate_membership_file,motif_candidate_node_membership.csv,string,,Frozen run_09 membership input.
+candidate_ambiguity_file,motif_candidate_node_ambiguity.csv,string,,Frozen node stability and boundary input.
+candidate_topology_file,motif_candidate_topology_audit.csv,string,,Graph-only interpretation-eligibility input.
+candidate_exemplar_file,motif_candidate_exemplar_manifest.csv,string,,Frozen graph-central exemplar input.
+expected_candidate_freeze_id,run09_candidates_2e58d214683b_8817d942_0e956a2c,string,,Required run_09 candidate freeze identifier.
+expected_membership_sha256,2e58d214683badb0b86e746bf32a7944da664b67243e778ea2d2638249268442,string,,Required byte-exact frozen membership hash.
+candidate_scope,interpretation_eligible_only,string,,Primary mosaics are restricted to graph-eligible candidates.
+candidate_limit_smoke,1,number,,Number of eligible candidates rendered in smoke mode.
+candidate_limit_full,Inf,number,,All eligible candidates are rendered in full mode.
+tiles_per_candidate,9,number,,A three-by-three mosaic contains nine unique examples.
+central_tiles,3,number,,First row contains graph-central high-stability exemplars.
+core_random_tiles,3,number,,Second row contains deterministic random high-confidence core examples.
+boundary_random_tiles,3,number,,Third row contains deterministic random boundary examples.
+core_minimum_node_stability,0.8,number,,Graph-only lower bound for core sampling.
+maximum_examples_per_session,1,number,,Post-fit diversity constraint preventing one session from dominating a candidate mosaic.
+random_stream_algorithm,mt19937ar,string,,Explicit deterministic MATLAB random stream used only for visualization sampling.
+random_seed,101001,number,,Fixed base seed for deterministic core and boundary sampling.
+blind_selection_stratum_in_render,true,logical,,Randomize display positions and show neutral tile letters so graph stability strata are hidden from reviewers.
+input_frame_rate_hz,80,number,,Frame rate inherited from the preprocessing and feature configuration.
+output_frame_rate_hz,20,number,,Real-time output frame rate after deterministic frame subsampling.
+minimum_clip_half_window_sec,1,number,,Minimum context on either side of the anchor.
+maximum_clip_half_window_sec,4,number,,Maximum context on either side of the anchor.
+clip_context_padding_sec,0.5,number,,Additional context added to half the candidate median chunk duration.
+camera_x_limits,1;1024,number_list,,Fixed condition-blind camera x limits.
+camera_y_limits,1;1024,number_list,,Fixed condition-blind camera y limits.
+exclude_ear_nodes,true,logical,,Exclude unstable ear keypoints from pose rendering.
+render_videos,true,logical,PRE_RUN10_RENDER_VIDEOS,Render MP4 mosaics in addition to anchor-frame contact sheets.
+video_profile,MPEG-4,string,,MATLAB VideoWriter profile.
+figure_pixels,1200,number,,Square mosaic raster dimension.
+contact_sheet_dpi,200,number,,Resolution of static anchor-frame contact sheets.
+parameter_audit_file,pre_run10_video_review_parameter_audit.csv,string,,Effective blinded-review configuration audit.
+selection_file,blinded_motif_candidate_video_selection.csv,string,,Frozen condition-blind example selection manifest.
+candidate_summary_file,blinded_motif_candidate_video_candidate_summary.csv,string,,Candidate-level clip and sampling summary.
+source_manifest_file,blinded_motif_candidate_video_source_manifest.csv,string,,Byte-exact provenance for selected preprocessed pose files.
+render_audit_file,blinded_motif_candidate_video_render_audit.csv,string,,Per-candidate video and contact-sheet render audit.
+output_manifest_file,pre_run10_blinded_video_review_output_manifest.csv,string,,Byte-exact configuration source input and output manifest.
+video_directory,videos,path,,Output-local blinded MP4 directory.
+contact_sheet_directory,contact_sheets,path,,Output-local blinded anchor-frame contact-sheet directory.

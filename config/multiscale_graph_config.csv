@@ -30,6 +30,25 @@ audit_resample_replicates,8,number,RUN08_RESAMPLE_REPLICATES,Number of dimension
 audit_resample_panel_max_nodes,8000,number,RUN08_RESAMPLE_PANEL_MAX_NODES,Maximum nodes in the fixed-seed scale-balanced neighborhood-stability audit panel.
 audit_resample_dimension_fraction,0.8,number,RUN08_RESAMPLE_DIMENSION_FRACTION,Fraction of numeric graph PCs retained in each dimension-subsampling replicate.
 audit_resample_session_fraction,0.8,number,RUN08_RESAMPLE_SESSION_FRACTION,Fraction of provenance sessions retained in each audit-only session-subsampling replicate.
+consensus_enabled,true,logical,RUN08_CONSENSUS_ENABLED,Build the condition-blind dimension-resampled stage-balanced consensus-neighborhood extension and run_09 handoff package.
+consensus_replicates,12,number,RUN08_CONSENSUS_REPLICATES,Number of stage-balanced graph replicates; twelve gives each current rare-enriched node one exposure under each of four dimension designs.
+consensus_candidate_k,50,number,RUN08_CONSENSUS_CANDIDATE_K,Maximum numeric kNN rank retained per replicate so k sensitivity can be derived without rebuilding distances.
+consensus_k_values,20;30;50,number_list,RUN08_CONSENSUS_K_VALUES,Neighbor ranks evaluated when constructing consensus-support sensitivity graphs.
+consensus_support_thresholds,0.3;0.5;0.7,number_list,RUN08_CONSENSUS_SUPPORT_THRESHOLDS,Conditional edge-recurrence thresholds evaluated without labels.
+consensus_core_n_pcs,8,number,RUN08_CONSENSUS_CORE_N_PCS,Leading numeric PCs retained in every core-tail dimension draw.
+consensus_dimension_fraction,0.8,number,RUN08_CONSENSUS_DIMENSION_FRACTION,Fraction of the locked graph PC set retained by core-tail dimension draws.
+consensus_prefix_short_n_pcs,16,number,RUN08_CONSENSUS_PREFIX_SHORT_N_PCS,Short prefix dimension design within the locked graph PC set.
+consensus_prefix_medium_n_pcs,20,number,RUN08_CONSENSUS_PREFIX_MEDIUM_N_PCS,Medium prefix dimension design within the locked graph PC set.
+consensus_min_co_inclusion_replicates,2,number,RUN08_CONSENSUS_MIN_CO_INCLUSION,Minimum replicate co-inclusion denominator for a supported edge.
+consensus_stable_min_degree,10,number,RUN08_CONSENSUS_STABLE_MIN_DEGREE,Minimum selected consensus degree for a node to be stable for run_09.
+consensus_rare_min_degree,5,number,RUN08_CONSENSUS_RARE_MIN_DEGREE,Minimum selected consensus degree used only for the condition-blind rare-stage coverage gate.
+consensus_gate_min_stable_node_fraction,0.8,number,RUN08_CONSENSUS_GATE_MIN_STABLE_FRACTION,Minimum all-node stable-degree fraction required for handoff.
+consensus_gate_min_largest_component_fraction,0.95,number,RUN08_CONSENSUS_GATE_MIN_COMPONENT_FRACTION,Minimum all-node largest-component fraction required for handoff.
+consensus_gate_min_rare_stable_fraction,0.7,number,RUN08_CONSENSUS_GATE_MIN_RARE_STABLE_FRACTION,Minimum rare-enriched-stage degree coverage required for handoff; ignored when no rare stage exists.
+consensus_gate_max_same_session_null_ratio,10,number,RUN08_CONSENSUS_GATE_MAX_SESSION_NULL_RATIO,Maximum same-session observed/null ratio allowed by the post-selection handoff audit; session identity never selects the support threshold.
+consensus_gate_max_same_scale_fraction_delta,0.1,number,RUN08_CONSENSUS_GATE_MAX_SCALE_DELTA,Maximum allowed post-selection increase in same-scale edge fraction relative to the primary numeric graph.
+consensus_min_passing_thresholds,1,number,RUN08_CONSENSUS_MIN_PASSING_THRESHOLDS,Minimum number of support thresholds at primary k that must pass all handoff gates.
+consensus_write_edge_support,true,logical,RUN08_CONSENSUS_WRITE_EDGE_SUPPORT,Persist the full sparse union edge-support audit rather than only the selected graph.
 umap_enabled,true,logical,RUN08_UMAP_ENABLED,Generate deterministic condition-blind UMAP coordinates for visualization only.
 umap_max_nodes,60000,number,RUN08_UMAP_MAX_NODES,Maximum graph nodes included in UMAP; current full enriched bank remains unsampled.
 umap_num_epochs,100,number,RUN08_UMAP_NUM_EPOCHS,Optimization epochs for each visualization-only UMAP fit.
