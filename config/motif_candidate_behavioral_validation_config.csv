@@ -1,0 +1,123 @@
+parameter,value,type,env_override,description
+run_mode,smoke,string,RUN10_VALIDATION_RUN_MODE,Execution mode; smoke and full use separate output roots but identical equations and status rules.
+phase,full,string,RUN10_VALIDATION_PHASE,prepare builds gates lineage sampling folds and rating packet; analyze runs available analyses; full performs both.
+output_dir,derived/motif_candidate_behavioral_validation_smoke,path,RUN10_VALIDATION_OUTPUT_DIR,Mode-routed run_10 output root.
+run09_output_dir,derived/motif_candidate_discovery,path,,Read-only immutable run_09 candidate root.
+run08_node_manifest_file,derived/graph_motif_discovery_rare_enriched/graph_consensus_node_manifest.csv,path,,Post-freeze safe-column node provenance used only for session scale anchor and raw-index linkage.
+preprocess_qc_file,derived/preprocess_qc/preprocess_qc_session_table.csv,path,,Safe-column pose-file provenance and frame-count input.
+pre_run10_review_dir,derived/pre_run10_blinded_motif_candidate_video_review,path,,Hashed blinded pose-mosaic preparation input.
+ratings_input_file,ratings/run10_blinded_ratings.csv,path,RUN10_RATINGS_INPUT_FILE,Optional external blinded rating file relative to the run_10 output root unless absolute.
+expected_candidate_freeze_id,run09_candidates_2e58d214683b_8817d942_0e956a2c,string,,Required immutable candidate freeze identifier.
+expected_membership_sha256,2e58d214683badb0b86e746bf32a7944da664b67243e778ea2d2638249268442,string,,Required byte-exact motif_candidate_node_membership.csv SHA-256.
+expected_node_count,50548,number,,Required frozen node count.
+expected_candidate_count,42,number,,Required frozen candidate count.
+expected_hierarchy_root_count,42,number,,Required flat root-only hierarchy row count.
+expected_eligible_candidate_ids,MC_M000750_C0001;MC_M000750_C0003;MC_M000750_C0004;MC_M000750_C0005;MC_M000750_C0006;MC_M000750_C0008;MC_M000750_C0009;MC_M000750_C0010;MC_M000750_C0011,string_list,,Exact frozen graph-only interpretation-eligibility set.
+membership_file,motif_candidate_node_membership.csv,string,,Immutable membership input; run_10 must never write this name.
+candidate_definition_file,motif_candidate_definition.csv,string,,Frozen candidate-ID definitions.
+candidate_hierarchy_file,motif_candidate_hierarchy.csv,string,,Frozen flat hierarchy.
+candidate_topology_file,motif_candidate_topology_audit.csv,string,,Frozen graph-only interpretation eligibility.
+candidate_ambiguity_file,motif_candidate_node_ambiguity.csv,string,,Frozen graph node ambiguity for post-rating audit only.
+run09_manifest_file,run09_output_manifest.csv,string,,Authoritative run_09 hash and freeze manifest.
+run09_freeze_validation_file,run09_input_freeze_validation.csv,string,,Run_09 input-freeze audit provenance.
+run09_annotation_file,motif_candidate_annotation.csv,string,,Provisional annotation input used only after validation outputs are frozen.
+run05_feature_dictionary_file,derived/features_motif_discovery/feature_dictionary.csv,path,,Run_05 discovery feature inventory.
+run06_transform_audit_file,derived/chunks_motif_discovery_rare_enriched/chunk_feature_transform_audit.csv,path,,Run_06 transformed discovery-channel inventory.
+run06_event_summary_file,derived/chunks_motif_discovery_rare_enriched/expanded_primary_chunk_event_summary_audit.csv,path,,Run_06 event-summary schema inventory; values are forbidden for validation.
+run07_feature_dictionary_file,derived/embedding_motif_discovery_rare_enriched/embedding_feature_dictionary.csv,path,,Run_07 summary-dimension inventory; values are forbidden for validation.
+discovery_value_pose_nodes,nose;body;midBody;tailBase,string_list,,Pose nodes whose numeric values enter run_05 discovery features.
+validation_pose_nodes,neck;lfPaw;rfPaw;lhPaw;rhPaw;tailMid;tailTip,string_list,,Disjoint raw-pose measurement channels permitted for run_10.
+validation_feature_panel_version,run10_disjoint_landmark_panel_v1,string,,Frozen independent measurement-panel identifier.
+validation_window_sec,1,number,,Fixed candidate-independent symmetric pose window around each anchor.
+minimum_feature_finite_fraction,0.8,number,,Minimum finite frame fraction for a node-level measurement.
+minimum_correlation_frames,20,number,,Minimum paired finite frames for a synchrony measurement.
+minimum_finite_feature_count,12,number,,Minimum finite independent features required for a node to enter automated analysis.
+coherence_missing_data_rule,global_feature_median_imputation_with_missingness_audit,string,,Condition-blind coherence imputation after the frozen feature panel is fixed.
+classifier_missing_data_rule,training_fold_feature_median_imputation,string,,Leakage-safe classifier imputation fit only on training folds.
+minimum_anchor_separation_sec,0.25,number,,Deterministic within candidate-session-scale separation preventing dense near-duplicate anchors.
+maximum_rows_per_candidate_session_scale_full,25,number,,Full deterministic per-cell cap selected before pose values are read.
+maximum_rows_per_candidate_session_scale_smoke,3,number,,Smoke deterministic per-cell cap.
+smoke_session_count,12,number,,Condition-blind evenly spaced session subset used only in smoke mode.
+feature_01_spec,"mean_forepaw_span_mm|mm|mean_t((d(LFpaw_1,RFpaw_1)+d(LFpaw_2,RFpaw_2))/2)|lfPaw;rfPaw|independent_behavioral_measure|Unordered-dyad forepaw stance width from unused landmarks",string,,Frozen validation feature.
+feature_02_spec,"absdiff_forepaw_span_mm|mm|mean_t(abs(d(LFpaw_1,RFpaw_1)-d(LFpaw_2,RFpaw_2)))|lfPaw;rfPaw|independent_behavioral_measure|Between-animal forepaw posture asymmetry magnitude",string,,Frozen validation feature.
+feature_03_spec,"mean_hindpaw_span_mm|mm|mean_t((d(LHpaw_1,RHpaw_1)+d(LHpaw_2,RHpaw_2))/2)|lhPaw;rhPaw|independent_behavioral_measure|Unordered-dyad hind-paw stance width from unused landmarks",string,,Frozen validation feature.
+feature_04_spec,"absdiff_hindpaw_span_mm|mm|mean_t(abs(d(LHpaw_1,RHpaw_1)-d(LHpaw_2,RHpaw_2)))|lhPaw;rhPaw|independent_behavioral_measure|Between-animal hind-paw posture asymmetry magnitude",string,,Frozen validation feature.
+feature_05_spec,"mean_paw_stance_length_mm|mm|mean_t((d(mean(forepaws_1),mean(hindpaws_1))+d(mean(forepaws_2),mean(hindpaws_2)))/2)|lfPaw;rfPaw;lhPaw;rhPaw|independent_behavioral_measure|Unordered-dyad anterior-posterior paw stance length",string,,Frozen validation feature.
+feature_06_spec,absdiff_paw_stance_length_mm|mm|mean_t(abs(stance_1-stance_2))|lfPaw;rfPaw;lhPaw;rhPaw|independent_behavioral_measure|Between-animal paw stance-length asymmetry magnitude,string,,Frozen validation feature.
+feature_07_spec,"mean_normalized_paw_area|dimensionless|mean_t((area(paw_polygon_1)/stance_1^2+area(paw_polygon_2)/stance_2^2)/2)|lfPaw;rfPaw;lhPaw;rhPaw|independent_behavioral_measure|Scale-normalized paw configuration area",string,,Frozen validation feature.
+feature_08_spec,absdiff_normalized_paw_area|dimensionless|mean_t(abs(area_norm_1-area_norm_2))|lfPaw;rfPaw;lhPaw;rhPaw|independent_behavioral_measure|Between-animal paw configuration asymmetry magnitude,string,,Frozen validation feature.
+feature_09_spec,"mean_axial_curvature_deg|degrees|mean_t((angle(neck_1->tailMid_1,tailMid_1->tailTip_1)+angle(neck_2->tailMid_2,tailMid_2->tailTip_2))/2)|neck;tailMid;tailTip|independent_behavioral_measure|Unordered-dyad posterior axial curvature",string,,Frozen validation feature.
+feature_10_spec,absdiff_axial_curvature_deg|degrees|mean_t(abs(curvature_1-curvature_2))|neck;tailMid;tailTip|independent_behavioral_measure|Between-animal axial-curvature asymmetry magnitude,string,,Frozen validation feature.
+feature_11_spec,"median_tailtip_pair_distance_mm|mm|median_t(d(tailTip_1,tailTip_2))|tailTip|independent_behavioral_measure|Tail-tip pair geometry absent from discovery",string,,Frozen validation feature.
+feature_12_spec,"q10_cross_paw_distance_mm|mm|q10_t(min_pairwise_distance(paws_1,paws_2))|lfPaw;rfPaw;lhPaw;rhPaw|independent_behavioral_measure|Fine-scale paw-to-paw contact configuration",string,,Frozen validation feature.
+feature_13_spec,"q10_forepaw_partner_tailtip_distance_mm|mm|q10_t(min(d(forepaws_1,tailTip_2),d(forepaws_2,tailTip_1)))|lfPaw;rfPaw;tailTip|independent_behavioral_measure|Directed-limb contact geometry symmetrized across the dyad",string,,Frozen validation feature.
+feature_14_spec,"paw_area_synchrony|correlation|corr_t(area_norm_1,area_norm_2)|lfPaw;rfPaw;lhPaw;rhPaw|independent_behavioral_measure|Within-window coordination of independent paw configurations",string,,Frozen validation feature.
+feature_15_spec,"axial_curvature_synchrony|correlation|corr_t(curvature_1,curvature_2)|neck;tailMid;tailTip|independent_behavioral_measure|Within-window coordination of posterior axial curvature",string,,Frozen validation feature.
+feature_16_spec,"stance_change_synchrony|correlation|corr_t(diff(stance_1),diff(stance_2))|lfPaw;rfPaw;lhPaw;rhPaw|independent_behavioral_measure|Within-window coordination of paw-stance change",string,,Frozen validation feature.
+random_stream_algorithm,mt19937ar,string,,Required deterministic MATLAB random stream.
+sampling_seed,101101,number,,Deterministic node-sampling seed; selection itself is value-blind.
+fold_seed,101201,number,,Deterministic grouped-session fold seed.
+permutation_seed,101301,number,,Base seed for blocked null permutations.
+rating_packet_seed,101401,number,,Base seed for deterministic non-semantic review IDs and packet ordering.
+grouped_fold_count,5,number,,Fixed number of whole-session held-out folds.
+permutation_count_full,200,number,,Production blocked permutation count.
+permutation_count_smoke,20,number,,Smoke blocked permutation count.
+bootstrap_count_full,200,number,,Production session-bootstrap count for coherence uncertainty.
+bootstrap_count_smoke,20,number,,Smoke session-bootstrap count.
+bootstrap_seed,101302,number,,Base seed for grouped session bootstrap.
+minimum_nodes_primary_full,100,number,,Minimum finite validation rows per eligible candidate.
+minimum_nodes_primary_smoke,10,number,,Smoke schema threshold.
+minimum_sessions_primary,5,number,,Minimum contributing sessions for primary evidence.
+minimum_scales_for_audit,3,number,,Minimum represented scales for a cross-scale result.
+minimum_nodes_per_scale,20,number,,Minimum candidate rows per scale profile.
+coherence_distance_metric,squared_euclidean_to_candidate_centroid,string,,Fixed within-candidate dispersion metric after robust global standardization.
+coherence_standardization_rule,global_feature_median_and_1.4826_MAD_condition_blind,string,,Fixed robust scaling for coherence and profile audits.
+coherence_min_relative_improvement,0.1,number,,Minimum reduction in dispersion relative to the blocked null mean.
+coherence_max_fdr_q,0.05,number,,Maximum BH-adjusted candidate-level coherence q-value.
+classifier_id,nearest_centroid_euclidean_v1,string,,Fixed auditable classifier with no tuned hyperparameters.
+standardization_rule,training_fold_mean_and_sd_floor_1e-12,string,,Classifier standardization fit only on training folds.
+heldout_min_candidate_recall,0.25,number,,Minimum grouped held-out recall for an eligible candidate.
+heldout_min_macro_balanced_accuracy,0.25,number,,Minimum overall grouped macro balanced accuracy.
+heldout_null_quantile,0.95,number,,Observed discriminability must exceed this blocked-null quantile.
+cross_session_min_split_profile_correlation,0.5,number,,Minimum fixed split-session centroid-profile correlation.
+cross_session_min_largest_session_removed_correlation,0.8,number,,Minimum full-versus-largest-session-removed profile correlation.
+cross_session_max_largest_session_fraction,0.5,number,,Maximum node fraction contributed by one session.
+cross_scale_consistency_correlation,0.5,number,,Threshold separating consistent from documented scale-dependent profiles.
+validation_status_rule_version,run10_behavioral_validation_status_v1,string,,Frozen status assignment contract.
+supported_required_primary_gates,3,number,,All three automated primary gates required for behaviorally_supported.
+partial_required_primary_gates,2,number,,Exactly two automated primary gates produce partially_supported.
+human_minimum_raters,2,number,,Minimum raters for agreement analysis.
+human_candidate_coherence_threshold,3.5,number,,Minimum mean 1-to-5 candidate coherence score.
+human_agreement_threshold,0.4,number,,Minimum ordinal agreement coefficient for a supported human-review component.
+rating_schema_version,run10_blinded_rating_schema_v1,string,,Frozen blank-template and import schema.
+figure_raster_format,png,string,,Raster figure format.
+figure_vector_format,pdf,string,,Vector companion format.
+figure_raster_dpi,300,number,,Paper-facing raster resolution.
+parameter_audit_file,run10_parameter_audit.csv,string,,Effective configuration audit.
+freeze_validation_file,run10_input_freeze_validation.csv,string,,Candidate freeze and structural gate audit.
+feature_registry_file,run10_validation_feature_registry.csv,string,,Proposed feature equations units sources lineage and inclusion decisions.
+overlap_audit_file,run10_discovery_feature_overlap_audit.csv,string,,Complete run_05-run_09 discovery-feature exclusion and proposed-panel comparison.
+sample_manifest_file,run10_validation_sample_manifest.csv,string,,Value-blind deterministic selected node manifest.
+fold_manifest_file,run10_blocked_fold_manifest.csv,string,,Grouped whole-session fold assignments.
+measurement_file,motif_candidate_independent_behavioral_measurement.csv,string,,Independent node-level pose measurement table.
+coherence_file,motif_candidate_behavioral_coherence_audit.csv,string,,Within-candidate dispersion and blocked-null audit.
+distinctness_file,motif_candidate_behavioral_distinctness_audit.csv,string,,Overall held-out distinctness summary.
+cross_session_file,motif_candidate_cross_session_reproducibility.csv,string,,Candidate cross-session profile reliability.
+cross_scale_file,motif_candidate_cross_scale_validation_audit.csv,string,,Candidate scale-consistency or scale-dependence audit.
+heldout_file,motif_candidate_heldout_discriminability.csv,string,,Candidate-level held-out recall audit.
+confusion_file,motif_candidate_validation_confusion_matrix.csv,string,,Grouped held-out confusion matrix.
+null_audit_file,motif_candidate_validation_null_audit.csv,string,,Blocked permutation construction and metrics.
+rating_packet_manifest_file,run10_blinded_rating_packet_manifest.csv,string,,Rater-visible randomized packet manifest.
+rating_template_file,run10_blinded_rating_template.csv,string,,Blank rating template; never fabricated ratings.
+rating_codebook_file,run10_blinded_rating_codebook.csv,string,,Rating field definitions and allowed values.
+rating_randomization_file,run10_blinded_rating_randomization_manifest.csv,string,,Sealed candidate and hidden-stratum mapping.
+rating_instructions_file,run10_blinded_rating_instructions.txt,string,,Rater instructions without experimental or graph metadata.
+rating_ingestion_audit_file,run10_blinded_rating_ingestion_audit.csv,string,,Rating presence hash and schema-validation audit.
+blinded_review_summary_file,motif_candidate_blinded_review_summary.csv,string,,Candidate blinded-review summary or explicit awaiting-ratings rows.
+rater_agreement_file,motif_candidate_rater_agreement.csv,string,,Inter-rater agreement table.
+graph_behavior_file,motif_candidate_graph_behavior_correspondence.csv,string,,Post-validation audit-only graph-to-behavior comparison.
+status_file,motif_candidate_behavioral_validation_status.csv,string,,Exactly one run_10 validation status per frozen candidate.
+provenance_file,motif_candidate_behavioral_validation_provenance.csv,string,,Validation rule source and freeze provenance.
+qc_figure_manifest_file,run10_qc_figure_manifest.csv,string,,QC figure hash manifest.
+paper_figure_manifest_file,run10_paper_figure_manifest.csv,string,,Paper-facing raster/vector figure manifest.
+output_manifest_file,run10_output_manifest.csv,string,,Complete artifact source config runtime and hash manifest.

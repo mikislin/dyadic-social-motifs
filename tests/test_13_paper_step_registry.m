@@ -13,7 +13,8 @@ required = ["step_id", "script_path", "enabled", "default_audit_mode", ...
     "description", "script_abs_path"];
 verifyTrue(testCase, all(ismember(required, string(registry.Properties.VariableNames))));
 verifyEqual(testCase, numel(unique(registry.step_id)), height(registry));
-verifyTrue(testCase, all(ismember("run_0" + string(1:9), registry.step_id)));
+verifyTrue(testCase, all(ismember([ ...
+    "run_0" + string(1:9), "run_10"], registry.step_id)));
 verifyTrue(testCase, all(isfile(registry.script_abs_path)));
 verifyTrue(testCase, all(startsWith(registry.script_path, "paper/")));
 verifyTrue(testCase, all(ismember(registry.default_audit_mode, ["smoke", "full"])));
@@ -51,6 +52,11 @@ verifyEqual(testCase, registry.smoke_env(registry.step_id == "run_09"), ...
     "RUN09_CANDIDATE_RUN_MODE=smoke;RUN09_CANDIDATE_OUTPUT_DIR=derived/motif_candidate_discovery_smoke");
 verifyEqual(testCase, registry.full_env(registry.step_id == "run_09"), ...
     "RUN09_CANDIDATE_RUN_MODE=full;RUN09_CANDIDATE_OUTPUT_DIR=derived/motif_candidate_discovery");
+verifyTrue(testCase, registry.smoke_safe(registry.step_id == "run_10"));
+verifyEqual(testCase, registry.smoke_env(registry.step_id == "run_10"), ...
+    "RUN10_VALIDATION_RUN_MODE=smoke;RUN10_VALIDATION_PHASE=full;RUN10_VALIDATION_OUTPUT_DIR=derived/motif_candidate_behavioral_validation_smoke");
+verifyEqual(testCase, registry.full_env(registry.step_id == "run_10"), ...
+    "RUN10_VALIDATION_RUN_MODE=full;RUN10_VALIDATION_PHASE=full;RUN10_VALIDATION_OUTPUT_DIR=derived/motif_candidate_behavioral_validation");
 end
 
 function testStepCallAuditToolExists(testCase)
